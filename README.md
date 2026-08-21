@@ -33,6 +33,7 @@ comment votes, and inspect the voters recorded for individual items.
 - read-only DB connection settings in the app
 - non-root hardened Docker runtime
 - application version and configured Lemmy instance shown in the footer
+- configurable display timezone
 
 ## Security note
 
@@ -60,7 +61,7 @@ Similar voting data is already publicly available through services such as
 ### Possible enhancements
 
 - Add optional authentication.
-- Add configurable timezone and date formatting.
+- Add configurable date formatting.
 - Add date-range filtering.
 - Add a health-check endpoint.
 
@@ -80,6 +81,7 @@ APP_PREFIX=/votes
 PAGE_SIZE=100
 LEMMY_NETWORK=lemmy-easy-deploy_default
 LEMMY_BASE_URL=https://example.com
+TIMEZONE=Pacific/Auckland
 ```
 
 Copy `.env.example` to `.env`:
@@ -96,6 +98,8 @@ cp .env.example .env
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
 - `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
   It is used to identify and link to the instance in the viewer UI.
+- `TIMEZONE` controls the timezone used for displayed vote timestamps. Use an
+  IANA timezone name such as `Pacific/Auckland`; it defaults to `UTC`.
 
 ### Passwords with URL-special characters
 

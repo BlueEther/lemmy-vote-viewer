@@ -71,7 +71,7 @@
         <a class="profile-link" title="Open local Lemmy profile" href="{{ row.voter_profile_path }}">👤</a>
         <a class="voter-name" href="{{ row.voter_vote_path }}">{{ row.voter_display_name or row.voter_name }}</a>
         <span class="voter-handle muted">{{ row.voter_display }}</span>
-        <span class="voter-time muted">{{ row.voted_at.strftime('%Y-%m-%d %H:%M') }}</span>
+        <span class="voter-time muted">{{ row.voted_at|display_datetime }}</span>
       </div>
     {% endfor %}
   </section>

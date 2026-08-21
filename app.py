@@ -3,7 +3,9 @@
 
 import math
 import os
+from datetime import timezone
 from urllib.parse import quote, urlencode, urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, abort, render_template, request
 import psycopg
@@ -21,6 +23,12 @@ try:
 except ValueError:
     PAGE_SIZE = 100
 PAGE_SIZE = max(20, min(PAGE_SIZE, 250))
+
+TIMEZONE_NAME = os.environ.get("TIMEZONE", "UTC").strip() or "UTC"
+try:
+    DISPLAY_TIMEZONE = ZoneInfo(TIMEZONE_NAME)
+except (ValueError, ZoneInfoNotFoundError) as exc:
+    raise RuntimeError(f"Invalid TIMEZONE: {TIMEZONE_NAME}") from exc
 
 
 @app.after_request
@@ -55,6 +63,15 @@ def inject_app_config():
         "lemmy_base_url": LEMMY_BASE_URL,
         "lemmy_instance": LEMMY_INSTANCE,
     }
+
+
+@app.template_filter("display_datetime")
+def display_datetime(value):
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(DISPLAY_TIMEZONE).strftime("%Y-%m-%d %H:%M %Z")
 
 
 def db():

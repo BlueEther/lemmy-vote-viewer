@@ -78,7 +78,7 @@
           {% else %}
             <span class="neutral">• {{ row.type|upper }}</span>
           {% endif %}
-          <span>{{ row.voted_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          <span>{{ row.voted_at|display_datetime }}</span>
           <span>{{ row.community_display }}</span>
         </div>
 
