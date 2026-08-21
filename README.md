@@ -20,6 +20,7 @@ comment votes, and inspect the voters recorded for individual items.
 - remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
 - username and partial-instance suggestions after an unsuccessful search
 - post and comment lookup by local path or ActivityPub URL
+- instance-level summaries and sortable per-user vote totals
 - public communities only
 - removed/deleted post and comment text is redacted
 - deleted users are excluded from voter lists/search

@@ -17,7 +17,7 @@
         <h2>User vote history</h2>
         <p>Search for a local or known remote user.</p>
         <form method="get" action="{{ app_prefix }}/" class="search">
-          <input name="user" value="{{ username }}" aria-label="Username" placeholder="username or username@instance" maxlength="512" autocomplete="off" {% if not item_query %}autofocus{% endif %}>
+          <input name="user" value="{{ username }}" aria-label="Username" placeholder="username or username@instance" maxlength="512" autocomplete="off" {% if not item_query and not instance_query %}autofocus{% endif %}>
           <button type="submit">Search</button>
         </form>
       </section>
@@ -27,6 +27,15 @@
         <p>Paste a local path or ActivityPub URL.</p>
         <form method="get" action="{{ app_prefix }}/" class="search">
           <input name="item" value="{{ item_query }}" aria-label="Post or comment path or URL" placeholder="/post/123 or https://remote.example/post/123" maxlength="2048" autocomplete="off" spellcheck="false" {% if item_query %}autofocus{% endif %}>
+          <button type="submit">Search</button>
+        </form>
+      </section>
+
+      <section class="search-panel">
+        <h2>Instance vote overview</h2>
+        <p>Review known voters and their current vote totals.</p>
+        <form method="get" action="{{ app_prefix }}/" class="search">
+          <input name="instance" value="{{ instance_query }}" aria-label="Instance domain" placeholder="instance.example" maxlength="255" autocomplete="off" autocapitalize="none" spellcheck="false" {% if instance_query %}autofocus{% endif %}>
           <button type="submit">Search</button>
         </form>
       </section>
@@ -56,6 +65,10 @@
     <p class="notice">Enter a local path such as <strong>/post/123</strong> or <strong>/comment/456</strong>, or a complete HTTP(S) ActivityPub URL.</p>
   {% elif item_error == 'not_found' %}
     <p class="notice">No known public post or comment found for <strong>{{ item_query }}</strong>. Remote items must already be known to this Lemmy instance.</p>
+  {% endif %}
+
+  {% if instance_error == 'invalid' %}
+    <p class="notice">Enter an instance domain such as <strong>lemmy.example</strong>, without a URL path.</p>
   {% endif %}
 
   {% if user %}
