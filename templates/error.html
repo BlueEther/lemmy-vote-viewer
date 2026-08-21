@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- Copyright (C) 2026 BlueEther@no.lastname.nz -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Error {{ status_code }} · Lemmy Vote Viewer</title>
+  <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+</head>
+<body>
+<main class="wrap">
+  <section class="error-page">
+    <div class="error-code">ERROR {{ status_code }}</div>
+    <h1>Something went wrong</h1>
+    <p>{{ message }}</p>
+    <a class="filter-button" href="{{ app_prefix }}/">Return to Vote Viewer</a>
+  </section>
+
+  {% include "_footer.html" %}
+</main>
+</body>
+</html>

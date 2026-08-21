@@ -173,6 +173,21 @@ button { cursor: pointer; }
   background: #252218;
 }
 
+.error-page {
+  padding: 48px 0;
+}
+
+.error-code {
+  margin-bottom: 8px;
+  color: #9ca3b3;
+  font-size: .9rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+
+.error-page h1 { margin: 0 0 12px; }
+.error-page .filter-button { margin-top: 12px; }
+
 .item-title-line {
   display: flex;
   gap: 12px;

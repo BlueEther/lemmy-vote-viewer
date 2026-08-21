@@ -1,0 +1,7 @@
+<footer class="site-footer">
+  <span>Lemmy Vote Viewer v{{ app_version }} <a href="https://github.com/BlueEther/lemmy-vote-viewer">Code on Github</a></span>
+  <span>&copy; 2026 <a href="https://no.lastname.nz/u/BlueEther">BlueEther</a></span>
+  {% if lemmy_instance %}
+    <span>Instance: <a href="{{ lemmy_base_url }}">{{ lemmy_instance }}</a></span>
+  {% endif %}
+</footer>

@@ -15,6 +15,12 @@ app = Flask(__name__)
 APP_VERSION = "0.2"
 DB_DSN = os.environ["DATABASE_URL"]
 
+ERROR_MESSAGES = {
+    400: "The request could not be understood.",
+    404: "The requested page or item was not found.",
+    500: "The viewer encountered an unexpected error.",
+}
+
 _raw_prefix = os.environ.get("APP_PREFIX", "/votes").strip()
 APP_PREFIX = "" if _raw_prefix in ("", "/") else "/" + _raw_prefix.strip("/")
 
@@ -63,6 +69,21 @@ def inject_app_config():
         "lemmy_base_url": LEMMY_BASE_URL,
         "lemmy_instance": LEMMY_INSTANCE,
     }
+
+
+@app.errorhandler(400)
+@app.errorhandler(404)
+@app.errorhandler(500)
+def handle_error(error):
+    status_code = getattr(error, "code", 500)
+    return (
+        render_template(
+            "error.html",
+            status_code=status_code,
+            message=ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[500]),
+        ),
+        status_code,
+    )
 
 
 @app.template_filter("display_datetime")

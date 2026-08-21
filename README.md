@@ -34,6 +34,7 @@ comment votes, and inspect the voters recorded for individual items.
 - non-root hardened Docker runtime
 - application version and configured Lemmy instance shown in the footer
 - configurable display timezone
+- friendly error pages without internal error details
 
 ## Security note
 
