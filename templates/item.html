@@ -83,6 +83,14 @@
       {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
     </nav>
   {% endif %}
+
+  <footer class="site-footer">
+    <span>Lemmy Vote Viewer v{{ app_version }}</span>
+    <span>&copy; 2026 BlueEther@no.lastname.nz</span>
+    {% if lemmy_instance %}
+      <span>Instance: <a href="{{ lemmy_base_url }}">{{ lemmy_instance }}</a></span>
+    {% endif %}
+  </footer>
 </main>
 </body>
 </html>

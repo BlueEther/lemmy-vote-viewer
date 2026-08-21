@@ -248,6 +248,20 @@ button { cursor: pointer; }
 
 .pagination > :last-child { justify-self: end; }
 
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 20px;
+  margin-top: 48px;
+  padding-top: 18px;
+  border-top: 1px solid #2a2e37;
+  color: #9ca3b3;
+  font-size: .85rem;
+}
+
+.site-footer a { text-underline-offset: 2px; }
+
 blockquote {
   margin-left: 0;
   padding-left: 16px;

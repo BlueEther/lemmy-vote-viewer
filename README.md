@@ -32,6 +32,7 @@ comment votes, and inspect the voters recorded for individual items.
 - no inline JavaScript
 - read-only DB connection settings in the app
 - non-root hardened Docker runtime
+- application version and configured Lemmy instance shown in the footer
 
 ## Security note
 
@@ -53,7 +54,6 @@ Similar voting data is already publicly available through services such as
 - Preserve community, sorting, and other filters in shareable URLs.
 - Allow sorting votes by newest or oldest.
 - Add a configurable `LEMMY_BASE_URL`.
-- Show the application version and current Lemmy instance in the HTML templates.
 - Add automated tests.
 - Document supported Lemmy versions and database compatibility.
 
@@ -79,6 +79,7 @@ DATABASE_URL=postgresql://vote_viewer:STRONG_PASSWORD@postgres:5432/lemmy
 APP_PREFIX=/votes
 PAGE_SIZE=100
 LEMMY_NETWORK=lemmy-easy-deploy_default
+LEMMY_BASE_URL=https://example.com
 ```
 
 Copy `.env.example` to `.env`:
@@ -93,6 +94,8 @@ cp .env.example .env
   and this application (*docker network ls* to find the network name).
 - `PAGE_SIZE` can be set from 20 to 250 and defaults to 100.
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
+- `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
+  It is used to identify and link to the instance in the viewer UI.
 
 ### Passwords with URL-special characters
 

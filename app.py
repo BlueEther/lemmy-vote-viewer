@@ -10,6 +10,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 app = Flask(__name__)
+APP_VERSION = "0.2"
 DB_DSN = os.environ["DATABASE_URL"]
 
 _raw_prefix = os.environ.get("APP_PREFIX", "/votes").strip()
@@ -48,7 +49,12 @@ def security_headers(response):
 
 @app.context_processor
 def inject_app_config():
-    return {"app_prefix": APP_PREFIX}
+    return {
+        "app_prefix": APP_PREFIX,
+        "app_version": APP_VERSION,
+        "lemmy_base_url": LEMMY_BASE_URL,
+        "lemmy_instance": LEMMY_INSTANCE,
+    }
 
 
 def db():
@@ -74,6 +80,26 @@ def safe_http_url(value):
     if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
         return None
     return value
+
+
+def lemmy_instance_config(value):
+    url = safe_http_url(value.strip()) if value else None
+    if not url:
+        return None, None
+    try:
+        parsed = urlsplit(url)
+        if parsed.username or parsed.password:
+            return None, None
+        base_url = f"{parsed.scheme.lower()}://{parsed.netloc}"
+        instance = (parsed.hostname or "").lower().rstrip(".")
+        return (base_url, instance) if instance else (None, None)
+    except ValueError:
+        return None, None
+
+
+LEMMY_BASE_URL, LEMMY_INSTANCE = lemmy_instance_config(
+    os.environ.get("LEMMY_BASE_URL", "")
+)
 
 
 def actor_domain(actor_id):
