@@ -18,6 +18,7 @@ comment votes, and inspect the voters recorded for individual items.
 
 - local users: `BlueEther`
 - remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
+- username and partial-instance suggestions after an unsuccessful search
 - post and comment lookup by local path or ActivityPub URL
 - public communities only
 - removed/deleted post and comment text is redacted
@@ -50,7 +51,6 @@ Similar voting data is already publicly available through services such as
 
 ### High priority
 
-- Add autocomplete or suggestions for `username@instance` searches.
 - Add community filtering by `!community` or `!community@instance`.
 - Preserve community, sorting, and other filters in shareable URLs.
 - Allow sorting votes by newest or oldest.

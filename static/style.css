@@ -198,6 +198,24 @@ button { cursor: pointer; }
   background: #252218;
 }
 
+.notice > :first-child { margin-top: 0; }
+.notice > :last-child { margin-bottom: 0; }
+
+.user-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.user-suggestions .filter-button {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
 .error-page {
   padding: 48px 0;
 }

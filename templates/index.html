@@ -34,7 +34,22 @@
   </header>
 
   {% if username and not user %}
-    <p class="notice">No known user found for <strong>{{ username }}</strong>. Remote users must already be known to this Lemmy instance.</p>
+    <div class="notice">
+      <p>No exact user found for <strong>{{ username }}</strong>. Remote users must already be known to this Lemmy instance.</p>
+      {% if user_suggestions %}
+        <p>Did you mean:</p>
+        <ul class="user-suggestions">
+          {% for suggestion in user_suggestions %}
+            <li>
+              <a class="filter-button" href="{{ suggestion.vote_path }}">
+                {{ suggestion.display_name }}
+                <span class="muted">@{{ suggestion.handle }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
   {% endif %}
 
   {% if item_error == 'invalid' %}

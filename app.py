@@ -326,6 +326,84 @@ def resolve_user(cur, username):
     return row
 
 
+USER_SUGGESTIONS_SQL = """
+SELECT id, name, display_name, local, actor_id
+FROM person
+WHERE deleted = false
+  AND left(lower(name), char_length(%s)) = lower(%s)
+  AND (
+      %s::text IS NULL
+      OR (
+          local = false
+          AND left(
+              lower(split_part(split_part(actor_id::text, '://', 2), '/', 1)),
+              char_length(%s)
+          ) = lower(%s)
+      )
+  )
+ORDER BY
+    CASE WHEN lower(name) = lower(%s) THEN 0 ELSE 1 END,
+    local DESC,
+    lower(name),
+    id
+LIMIT %s
+"""
+
+
+def parse_user_suggestion_input(username):
+    username = username.strip()
+    if username.startswith("@"):
+        username = username[1:]
+
+    if "@" in username:
+        name_prefix, domain_prefix = username.rsplit("@", 1)
+        name_prefix = name_prefix.strip()
+        domain_prefix = domain_prefix.strip().lower().rstrip(".")
+        if "/" in domain_prefix or len(domain_prefix) > 255:
+            return None
+    else:
+        name_prefix = username
+        domain_prefix = None
+
+    if len(name_prefix) < 2 or len(name_prefix) > 255:
+        return None
+    return name_prefix, domain_prefix
+
+
+def find_user_suggestions(cur, username, limit=8):
+    parsed = parse_user_suggestion_input(username)
+    if not parsed:
+        return []
+    name_prefix, domain_prefix = parsed
+
+    cur.execute(
+        USER_SUGGESTIONS_SQL,
+        (
+            name_prefix,
+            name_prefix,
+            domain_prefix,
+            domain_prefix,
+            domain_prefix,
+            name_prefix,
+            limit,
+        ),
+    )
+
+    suggestions = []
+    for row in cur.fetchall():
+        handle = make_handle(row["name"], row["local"], row["actor_id"])
+        if not handle:
+            continue
+        suggestions.append(
+            {
+                "display_name": row["display_name"] or row["name"],
+                "handle": handle,
+                "vote_path": vote_history_path(handle),
+            }
+        )
+    return suggestions
+
+
 USER_VOTES_SQL = """
 WITH votes AS (
     SELECT
@@ -674,6 +752,7 @@ def index():
     pagination = None
     type_urls = {}
     score_urls = {}
+    user_suggestions = []
 
     if username:
         with db() as conn:
@@ -718,6 +797,8 @@ def index():
                         pagination["next_url"] = build_index_url(
                             canonical_username, content_type, score_filter, pagination["next_page"]
                         )
+                else:
+                    user_suggestions = find_user_suggestions(cur, username)
 
     return render_template(
         "index.html",
@@ -725,6 +806,7 @@ def index():
         item_query=item_query,
         item_error=item_error,
         user=user,
+        user_suggestions=user_suggestions,
         rows=rows,
         summary=summary,
         pagination=pagination,
