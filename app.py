@@ -3,11 +3,12 @@
 
 import math
 import os
+import re
 from datetime import timezone
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from flask import Flask, abort, render_template, request
+from flask import Flask, abort, redirect, render_template, request
 import psycopg
 from psycopg.rows import dict_row
 
@@ -163,6 +164,69 @@ def local_profile_path(handle):
     if not handle:
         return None
     return "/u/" + quote(handle, safe="@._~-")
+
+
+LOCAL_ITEM_PATH = re.compile(r"^/(post|comment)/(\d+)/?$")
+
+
+def parse_local_item_path(path):
+    match = LOCAL_ITEM_PATH.fullmatch(path)
+    if not match:
+        return None
+    item_id = int(match.group(2))
+    return (match.group(1), item_id) if item_id > 0 else None
+
+
+def url_origin(parsed):
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if not host:
+        return None
+    default_port = 80 if scheme == "http" else 443 if scheme == "https" else None
+    return scheme, host, port or default_port
+
+
+def parse_item_search(value):
+    value = value.strip()
+    if not value:
+        return None
+
+    if value.startswith("/"):
+        parsed = urlsplit(value)
+        if parsed.scheme or parsed.netloc:
+            return None
+        local_item = parse_local_item_path(parsed.path)
+        return {"local_item": local_item} if local_item else None
+
+    url = safe_http_url(value)
+    if not url:
+        return None
+    try:
+        parsed = urlsplit(url)
+        if parsed.username or parsed.password or url_origin(parsed) is None:
+            return None
+    except ValueError:
+        return None
+
+    clean_url = urlunsplit(
+        (parsed.scheme.lower(), parsed.netloc, parsed.path, parsed.query, "")
+    )
+    alternate_url = clean_url[:-1] if clean_url.endswith("/") else clean_url
+
+    local_item = None
+    if LEMMY_BASE_URL:
+        base = urlsplit(LEMMY_BASE_URL)
+        if url_origin(parsed) == url_origin(base):
+            local_item = parse_local_item_path(parsed.path)
+
+    return {
+        "local_item": local_item,
+        "ap_urls": (clean_url, alternate_url),
+    }
 
 
 def parse_page():
@@ -375,6 +439,29 @@ FROM votes
 """
 
 
+ITEM_BY_AP_ID_SQL = """
+SELECT 'post'::text AS kind, p.id AS item_id
+FROM post p
+JOIN community c ON c.id = p.community_id
+WHERE p.ap_id IN (%s, %s)
+  AND c.visibility::text = 'Public'
+  AND c.deleted = false
+  AND c.removed = false
+
+UNION ALL
+
+SELECT 'comment'::text AS kind, cm.id AS item_id
+FROM comment cm
+JOIN post p ON p.id = cm.post_id
+JOIN community c ON c.id = p.community_id
+WHERE cm.ap_id IN (%s, %s)
+  AND c.visibility::text = 'Public'
+  AND c.deleted = false
+  AND c.removed = false
+LIMIT 1
+"""
+
+
 POST_ITEM_SQL = """
 SELECT
     p.id AS post_id,
@@ -537,11 +624,38 @@ def enrich_voter(row):
     return row
 
 
+def resolve_item_search(item_query):
+    parsed = parse_item_search(item_query)
+    if not parsed:
+        return None, "invalid"
+
+    if parsed["local_item"]:
+        return parsed["local_item"], None
+
+    ap_urls = parsed["ap_urls"]
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(ITEM_BY_AP_ID_SQL, (*ap_urls, *ap_urls))
+            row = cur.fetchone()
+    if not row:
+        return None, "not_found"
+    return (row["kind"], row["item_id"]), None
+
+
 @app.route("/")
 def index():
     username = request.args.get("user", "").strip()
     if len(username) > 512:
         abort(400)
+
+    item_query = request.args.get("item", "").strip()
+    if len(item_query) > 2048:
+        abort(400)
+    item_error = None
+    if item_query:
+        item_result, item_error = resolve_item_search(item_query)
+        if item_result:
+            return redirect(build_item_url(*item_result))
 
     content_type = request.args.get("type", "all")
     if content_type not in ("all", "post", "comment"):
@@ -605,6 +719,8 @@ def index():
     return render_template(
         "index.html",
         username=username,
+        item_query=item_query,
+        item_error=item_error,
         user=user,
         rows=rows,
         summary=summary,

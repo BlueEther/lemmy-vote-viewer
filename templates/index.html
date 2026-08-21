@@ -17,27 +17,30 @@
         <h2>User vote history</h2>
         <p>Search for a local or known remote user.</p>
         <form method="get" action="{{ app_prefix }}/" class="search">
-          <input name="user" value="{{ username }}" aria-label="Username" placeholder="username or username@instance" maxlength="512" autocomplete="off" autofocus>
+          <input name="user" value="{{ username }}" aria-label="Username" placeholder="username or username@instance" maxlength="512" autocomplete="off" {% if not item_query %}autofocus{% endif %}>
           <button type="submit">Search</button>
         </form>
       </section>
 
       <section class="search-panel">
-        <div class="search-panel-heading">
-          <h2>Post or comment votes</h2>
-          <span class="coming-soon">Coming soon</span>
-        </div>
+        <h2>Post or comment votes</h2>
         <p>Paste a local path or ActivityPub URL.</p>
-        <div class="search search-preview">
-          <input type="text" aria-label="Post or comment path or URL" placeholder="/post/123 or https://remote.example/post/123" maxlength="2048" autocomplete="off" spellcheck="false">
-          <button type="button" disabled>Search</button>
-        </div>
+        <form method="get" action="{{ app_prefix }}/" class="search">
+          <input name="item" value="{{ item_query }}" aria-label="Post or comment path or URL" placeholder="/post/123 or https://remote.example/post/123" maxlength="2048" autocomplete="off" spellcheck="false" {% if item_query %}autofocus{% endif %}>
+          <button type="submit">Search</button>
+        </form>
       </section>
     </div>
   </header>
 
   {% if username and not user %}
     <p class="notice">No known user found for <strong>{{ username }}</strong>. Remote users must already be known to this Lemmy instance.</p>
+  {% endif %}
+
+  {% if item_error == 'invalid' %}
+    <p class="notice">Enter a local path such as <strong>/post/123</strong> or <strong>/comment/456</strong>, or a complete HTTP(S) ActivityPub URL.</p>
+  {% elif item_error == 'not_found' %}
+    <p class="notice">No known public post or comment found for <strong>{{ item_query }}</strong>. Remote items must already be known to this Lemmy instance.</p>
   {% endif %}
 
   {% if user %}

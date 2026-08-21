@@ -18,6 +18,7 @@ comment votes, and inspect the voters recorded for individual items.
 
 - local users: `BlueEther`
 - remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
+- post and comment lookup by local path or ActivityPub URL
 - public communities only
 - removed/deleted post and comment text is redacted
 - deleted users are excluded from voter lists/search
@@ -49,8 +50,6 @@ Similar voting data is already publicly available through services such as
 
 ### High priority
 
-- Search for posts and comments by local path or ActivityPub URL
-  (`/post/123`, `/comment/456`, a complete local URL, or a federated URL).
 - Add autocomplete or suggestions for `username@instance` searches.
 - Add community filtering by `!community` or `!community@instance`.
 - Preserve community, sorting, and other filters in shareable URLs.
