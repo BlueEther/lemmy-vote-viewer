@@ -34,6 +34,14 @@ except ValueError:
     PAGE_SIZE = 100
 PAGE_SIZE = max(20, min(PAGE_SIZE, 250))
 
+try:
+    INSTANCE_QUERY_TIMEOUT_SECONDS = int(
+        os.environ.get("INSTANCE_QUERY_TIMEOUT_SECONDS", "12")
+    )
+except ValueError:
+    INSTANCE_QUERY_TIMEOUT_SECONDS = 12
+INSTANCE_QUERY_TIMEOUT_SECONDS = max(5, min(INSTANCE_QUERY_TIMEOUT_SECONDS, 12))
+
 TIMEZONE_NAME = os.environ.get("TIMEZONE", "UTC").strip() or "UTC"
 try:
     DISPLAY_TIMEZONE = ZoneInfo(TIMEZONE_NAME)
@@ -582,57 +590,7 @@ LIMIT 1
 """
 
 
-INSTANCE_SUMMARY_SQL = """
-WITH instance_users AS (
-    SELECT id
-    FROM person
-    WHERE instance_id = %s
-      AND deleted = false
-),
-votes AS (
-    SELECT pl.person_id, pl.score
-    FROM instance_users iu
-    JOIN post_like pl ON pl.person_id = iu.id
-    JOIN post p ON p.id = pl.post_id
-    JOIN community c ON c.id = p.community_id
-    WHERE c.visibility::text = 'Public'
-      AND c.deleted = false
-      AND c.removed = false
-
-    UNION ALL
-
-    SELECT cl.person_id, cl.score
-    FROM instance_users iu
-    JOIN comment_like cl ON cl.person_id = iu.id
-    JOIN comment cm ON cm.id = cl.comment_id
-    JOIN post p ON p.id = cm.post_id
-    JOIN community c ON c.id = p.community_id
-    WHERE c.visibility::text = 'Public'
-      AND c.deleted = false
-      AND c.removed = false
-),
-vote_totals AS (
-    SELECT
-        person_id,
-        COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE score > 0) AS up,
-        COUNT(*) FILTER (WHERE score < 0) AS down,
-        COUNT(*) FILTER (WHERE score = 0) AS neutral
-    FROM votes
-    GROUP BY person_id
-)
-SELECT
-    (SELECT COUNT(*) FROM instance_users) AS known_users,
-    COUNT(*) AS voting_users,
-    COALESCE(SUM(total), 0) AS total,
-    COALESCE(SUM(up), 0) AS up,
-    COALESCE(SUM(down), 0) AS down,
-    COALESCE(SUM(neutral), 0) AS neutral
-FROM vote_totals
-"""
-
-
-INSTANCE_USERS_SQL = """
+INSTANCE_OVERVIEW_SQL = """
 WITH instance_users AS (
     SELECT id, name, display_name, local, actor_id
     FROM person
@@ -645,7 +603,7 @@ votes AS (
     JOIN post_like pl ON pl.person_id = iu.id
     JOIN post p ON p.id = pl.post_id
     JOIN community c ON c.id = p.community_id
-    WHERE c.visibility::text = 'Public'
+    WHERE c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
 
@@ -654,10 +612,9 @@ votes AS (
     SELECT cl.person_id, cl.score, cl.published AS voted_at
     FROM instance_users iu
     JOIN comment_like cl ON cl.person_id = iu.id
-    JOIN comment cm ON cm.id = cl.comment_id
-    JOIN post p ON p.id = cm.post_id
+    JOIN post p ON p.id = cl.post_id
     JOIN community c ON c.id = p.community_id
-    WHERE c.visibility::text = 'Public'
+    WHERE c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
 ),
@@ -671,22 +628,60 @@ vote_totals AS (
         MAX(voted_at) AS latest_vote
     FROM votes
     GROUP BY person_id
+),
+summary AS (
+    SELECT
+        (SELECT COUNT(*) FROM instance_users) AS known_users,
+        COUNT(*) AS voting_users,
+        COALESCE(SUM(total), 0) AS total,
+        COALESCE(SUM(up), 0) AS up,
+        COALESCE(SUM(down), 0) AS down,
+        COALESCE(SUM(neutral), 0) AS neutral
+    FROM vote_totals
+),
+ranked_users AS (
+    SELECT
+        iu.id,
+        iu.name,
+        iu.display_name,
+        iu.local,
+        iu.actor_id,
+        vt.total,
+        vt.up,
+        vt.down,
+        vt.neutral,
+        vt.latest_vote,
+        ROW_NUMBER() OVER (ORDER BY {order_by}) AS sort_position
+    FROM instance_users iu
+    JOIN vote_totals vt ON vt.person_id = iu.id
+),
+paged_users AS (
+    SELECT *
+    FROM ranked_users
+    WHERE sort_position > %s
+      AND sort_position <= %s
 )
 SELECT
-    iu.id,
-    iu.name,
-    iu.display_name,
-    iu.local,
-    iu.actor_id,
-    vt.total,
-    vt.up,
-    vt.down,
-    vt.neutral,
-    vt.latest_vote
-FROM instance_users iu
-JOIN vote_totals vt ON vt.person_id = iu.id
-ORDER BY {order_by}
-LIMIT %s OFFSET %s
+    summary.known_users,
+    summary.voting_users,
+    summary.total AS summary_total,
+    summary.up AS summary_up,
+    summary.down AS summary_down,
+    summary.neutral AS summary_neutral,
+    pu.id,
+    pu.name,
+    pu.display_name,
+    pu.local,
+    pu.actor_id,
+    pu.total,
+    pu.up,
+    pu.down,
+    pu.neutral,
+    pu.latest_vote,
+    pu.sort_position
+FROM summary
+LEFT JOIN paged_users pu ON true
+ORDER BY pu.sort_position
 """
 
 
@@ -1021,16 +1016,42 @@ def instance_overview(domain):
             if not canonical_domain:
                 abort(404)
 
-            cur.execute(INSTANCE_SUMMARY_SQL, (instance["id"],))
-            summary = cur.fetchone()
-            pagination = make_pagination(summary["voting_users"], requested_page)
-
-            users_sql = INSTANCE_USERS_SQL.format(order_by=INSTANCE_SORTS[sort])
-            cur.execute(
-                users_sql,
-                (instance["id"], PAGE_SIZE, pagination["offset"]),
+            requested_offset = (requested_page - 1) * PAGE_SIZE
+            overview_sql = INSTANCE_OVERVIEW_SQL.format(
+                order_by=INSTANCE_SORTS[sort]
             )
-            rows = [enrich_instance_user(row) for row in cur.fetchall()]
+            cur.execute(
+                "SELECT set_config('statement_timeout', %s, true)",
+                (f"{INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
+            )
+            cur.execute(
+                overview_sql,
+                (
+                    instance["id"],
+                    requested_offset,
+                    requested_offset + PAGE_SIZE,
+                ),
+            )
+            result_rows = cur.fetchall()
+            overview = result_rows[0]
+            summary = {
+                "known_users": overview["known_users"],
+                "voting_users": overview["voting_users"],
+                "total": overview["summary_total"],
+                "up": overview["summary_up"],
+                "down": overview["summary_down"],
+                "neutral": overview["summary_neutral"],
+            }
+            pagination = make_pagination(summary["voting_users"], requested_page)
+            if pagination["page"] != requested_page:
+                return redirect(
+                    build_instance_url(canonical_domain, sort, pagination["page"])
+                )
+            rows = [
+                enrich_instance_user(row)
+                for row in result_rows
+                if row["id"] is not None
+            ]
 
     sort_urls = {
         key: build_instance_url(canonical_domain, key)

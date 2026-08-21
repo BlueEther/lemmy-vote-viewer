@@ -80,6 +80,7 @@ A full example is in `.env.example`.
 DATABASE_URL=postgresql://vote_viewer:STRONG_PASSWORD@postgres:5432/lemmy
 APP_PREFIX=/votes
 PAGE_SIZE=100
+INSTANCE_QUERY_TIMEOUT_SECONDS=12
 LEMMY_NETWORK=lemmy-easy-deploy_default
 LEMMY_BASE_URL=https://example.com
 TIMEZONE=Pacific/Auckland
@@ -96,6 +97,9 @@ cp .env.example .env
 - `LEMMY_NETWORK` is the existing Docker network shared by the proxy, PostgreSQL,
   and this application (*docker network ls* to find the network name).
 - `PAGE_SIZE` can be set from 20 to 250 and defaults to 100.
+- `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance-overview query.
+  It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
+  below the Gunicorn worker timeout.
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
 - `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
   It is used to identify and link to the instance in the viewer UI.
