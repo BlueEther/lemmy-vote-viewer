@@ -1,4 +1,4 @@
-# Lemmy Vote Viewer v0.2
+# Lemmy Vote Viewer
 
 Lemmy Vote Viewer provides a read-only view of the votes currently stored by a
 Lemmy instance. Search for local or known remote users, filter their post and

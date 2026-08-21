@@ -5,6 +5,7 @@ import math
 import os
 import re
 from datetime import timezone
+from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -13,7 +14,9 @@ import psycopg
 from psycopg.rows import dict_row
 
 app = Flask(__name__)
-APP_VERSION = "0.2"
+APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
+if not APP_VERSION:
+    raise RuntimeError("VERSION file is empty")
 DB_DSN = os.environ["DATABASE_URL"]
 
 ERROR_MESSAGES = {
