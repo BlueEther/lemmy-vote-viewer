@@ -12,10 +12,28 @@
 <main class="wrap">
   <header>
     <h1>Lemmy Vote Viewer</h1>
-    <form method="get" action="{{ app_prefix }}/" class="search">
-      <input name="user" value="{{ username }}" placeholder="username or username@instance" maxlength="512" autocomplete="off" autofocus>
-      <button type="submit">Search</button>
-    </form>
+    <div class="search-options">
+      <section class="search-panel">
+        <h2>User vote history</h2>
+        <p>Search for a local or known remote user.</p>
+        <form method="get" action="{{ app_prefix }}/" class="search">
+          <input name="user" value="{{ username }}" aria-label="Username" placeholder="username or username@instance" maxlength="512" autocomplete="off" autofocus>
+          <button type="submit">Search</button>
+        </form>
+      </section>
+
+      <section class="search-panel">
+        <div class="search-panel-heading">
+          <h2>Post or comment votes</h2>
+          <span class="coming-soon">Coming soon</span>
+        </div>
+        <p>Paste a local path or ActivityPub URL.</p>
+        <div class="search search-preview">
+          <input type="text" aria-label="Post or comment path or URL" placeholder="/post/123 or https://remote.example/post/123" maxlength="2048" autocomplete="off" spellcheck="false">
+          <button type="button" disabled>Search</button>
+        </div>
+      </section>
+    </div>
   </header>
 
   {% if username and not user %}
