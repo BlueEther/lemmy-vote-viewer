@@ -33,6 +33,43 @@ comment votes, and inspect the voters recorded for individual items.
 - read-only DB connection settings in the app
 - non-root hardened Docker runtime
 
+## Security note
+
+This viewer exposes voting data publicly by default. Operators should decide
+whether public access is appropriate for their deployment and configure access
+controls if needed.
+
+Similar voting data is already publicly available through services such as
+[Lemvotes](https://lemvotes.org).
+
+## Roadmap
+
+### High priority
+
+- Search for posts and comments by local path or ActivityPub URL
+  (`/post/123`, `/comment/456`, a complete local URL, or a federated URL).
+- Add autocomplete or suggestions for `username@instance` searches.
+- Add community filtering by `!community` or `!community@instance`.
+- Preserve community, sorting, and other filters in shareable URLs.
+- Allow sorting votes by newest or oldest.
+- Add a configurable `LEMMY_BASE_URL`.
+- Show the application version and current Lemmy instance in the HTML templates.
+- Add automated tests.
+- Document supported Lemmy versions and database compatibility.
+
+### Possible enhancements
+
+- Add optional authentication.
+- Add configurable timezone and date formatting.
+- Add date-range filtering.
+- Add a health-check endpoint.
+
+### Documentation and operations
+
+- Document upgrading, rebuilding, and rerunning `db-grants.sql`.
+- Provide example Caddy access-control and optional-authentication configurations.
+- Add structured request and error logging.
+
 ## Environment
 
 A full example is in `.env.example`.
@@ -56,9 +93,6 @@ cp .env.example .env
   and this application (*docker network ls* to find the network name).
 - `PAGE_SIZE` can be set from 20 to 250 and defaults to 100.
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
-
-### Subdomain TODO
-- Add a configurable Lemmy base URL
 
 ### Passwords with URL-special characters
 
@@ -136,9 +170,6 @@ With that configuration, keep the application prefix in `.env`:
 ```text
 APP_PREFIX=/votes
 ```
-
-### Subdomain TODO
-- Add a configurable Lemmy base URL
 
 ## Checks
 
