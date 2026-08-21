@@ -191,6 +191,7 @@ Security was then checked with Codex and GitHub Copilot.
 ## License
 
 Copyright (C) 2026 BlueEther@no.lastname.nz
+-- SPDX-License-Identifier: AGPL-3.0-or-later
 
 This project is free software licensed under the GNU Affero General Public
 License, version 3 or (at your option) any later version. See [LICENSE](LICENSE)

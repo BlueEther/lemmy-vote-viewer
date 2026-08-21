@@ -24,14 +24,12 @@ SELECT EXISTS (
 \if :vote_viewer_role_exists
 
 \echo ''
-\echo 'vote_viewer role exists, continueing'
+\echo 'vote_viewer role exists, continuing'
 \echo ''
 
 \else
 
 \echo 'ERROR: PostgreSQL role "vote_viewer" does not exist.'
-\echo ''
-\echo '"vote_viewer" role found.'
 \echo ''
 \echo 'This script assumes the PostgreSQL role "vote_viewer" already exists.'
 \echo ''
