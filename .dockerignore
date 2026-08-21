@@ -1,0 +1,9 @@
+# Copyright (C) 2026 BlueEther@no.lastname.nz
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+.env
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.pyo

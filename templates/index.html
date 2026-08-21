@@ -1,0 +1,136 @@
+<!doctype html>
+<!-- Copyright (C) 2026 BlueEther@no.lastname.nz -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Lemmy Vote Viewer</title>
+  <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Lemmy Vote Viewer</h1>
+    <form method="get" action="{{ app_prefix }}/" class="search">
+      <input name="user" value="{{ username }}" placeholder="username or username@instance" maxlength="512" autocomplete="off" autofocus>
+      <button type="submit">Search</button>
+    </form>
+  </header>
+
+  {% if username and not user %}
+    <p class="notice">No known user found for <strong>{{ username }}</strong>. Remote users must already be known to this Lemmy instance.</p>
+  {% endif %}
+
+  {% if user %}
+    <section class="summary">
+      <div>
+        <div class="user-heading">
+          <h2>{{ user.display_name or user.name }}</h2>
+          {% if user.profile_path %}
+            <a class="profile-link" title="Open local Lemmy profile" href="{{ user.profile_path }}">👤</a>
+          {% endif %}
+        </div>
+        <div class="muted">@{{ user.handle }}</div>
+      </div>
+
+      <div class="stats">
+        <span><b>{{ summary.total }}</b> current votes</span>
+        <span class="up"><b>{{ summary.up }}</b> ↑</span>
+        <span class="down"><b>{{ summary.down }}</b> ↓</span>
+        {% if summary.neutral %}<span class="neutral"><b>{{ summary.neutral }}</b> •</span>{% endif %}
+        <span><b>{{ summary.posts }}</b> posts</span>
+        <span><b>{{ summary.comments }}</b> comments</span>
+      </div>
+    </section>
+
+    <nav class="filters" aria-label="Vote filters">
+      <div class="filter-group">
+        <span class="filter-label">Type</span>
+        <a class="filter-button {{ 'active' if content_type == 'all' else '' }}" href="{{ type_urls.all }}">All</a>
+        <a class="filter-button {{ 'active' if content_type == 'post' else '' }}" href="{{ type_urls.post }}">Posts</a>
+        <a class="filter-button {{ 'active' if content_type == 'comment' else '' }}" href="{{ type_urls.comment }}">Comments</a>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">Vote</span>
+        <a class="filter-button {{ 'active' if score_filter is none else '' }}" href="{{ score_urls.all }}">All</a>
+        <a class="filter-button {{ 'active' if score_filter == 1 else '' }}" href="{{ score_urls['1'] }}">↑ Upvotes</a>
+        <a class="filter-button {{ 'active' if score_filter == -1 else '' }}" href="{{ score_urls['-1'] }}">↓ Downvotes</a>
+        {% if summary.neutral %}
+          <a class="filter-button {{ 'active' if score_filter == 0 else '' }}" href="{{ score_urls['0'] }}">• Neutral</a>
+        {% endif %}
+      </div>
+    </nav>
+
+    {% if summary.filtered_total == 0 %}
+      <p class="notice">No votes match the selected filters.</p>
+    {% endif %}
+
+    <section id="votes">
+    {% for row in rows %}
+      <article class="vote-row">
+        <div class="meta">
+          {% if row.score > 0 %}
+            <span class="up">↑ {{ row.type|upper }}</span>
+          {% elif row.score < 0 %}
+            <span class="down">↓ {{ row.type|upper }}</span>
+          {% else %}
+            <span class="neutral">• {{ row.type|upper }}</span>
+          {% endif %}
+          <span>{{ row.voted_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          <span>{{ row.community_display }}</span>
+        </div>
+
+        <div class="content-line">
+          {% if row.type == 'post' %}
+            <a class="ballot" title="Show votes on this post" href="{{ app_prefix }}/item/post/{{ row.post_id }}">🗳</a>
+            {% if row.remote_url %}
+              <a class="remote" title="Open original remote post" href="{{ row.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+            {% endif %}
+            {% if row.content_hidden %}
+              <span class="title content-hidden">{{ row.post_title }}</span>
+            {% else %}
+              <a class="title" href="/post/{{ row.post_id }}">{{ row.post_title }}</a>
+            {% endif %}
+          {% else %}
+            <a class="ballot" title="Show votes on this comment" href="{{ app_prefix }}/item/comment/{{ row.comment_id }}">🗳</a>
+            {% if row.remote_url %}
+              <a class="remote" title="Open original remote comment" href="{{ row.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+            {% endif %}
+            {% if row.content_hidden %}
+              <span class="title content-hidden">{{ row.comment_content }}</span>
+            {% else %}
+              <a class="title" href="/comment/{{ row.comment_id }}">{{ row.comment_content|truncate(240, True, '…') }}</a>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        <div class="author">
+          {% if row.author_handle %}
+            <span>
+              by <a href="{{ row.author_profile_path }}">{{ row.author_display_name or row.author_name }}</a>
+              <span class="muted">@{{ row.author_handle }}</span>
+            </span>
+          {% elif row.content_hidden %}
+            <span>author hidden</span>
+          {% else %}
+            <span>by deleted user</span>
+          {% endif %}
+          {% if row.type == 'comment' %}<span>· on {{ row.post_title }}</span>{% endif %}
+        </div>
+      </article>
+    {% endfor %}
+    </section>
+
+    {% if pagination and pagination.page_count > 1 %}
+      <nav class="pagination" aria-label="Pagination">
+        {% if pagination.has_prev %}<a class="filter-button" href="{{ pagination.prev_url }}">← Previous</a>{% else %}<span></span>{% endif %}
+        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} matching votes</span>
+        {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
+      </nav>
+    {% endif %}
+  {% endif %}
+</main>
+</body>
+</html>

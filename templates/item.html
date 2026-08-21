@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- Copyright (C) 2026 BlueEther@no.lastname.nz -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Votes · Lemmy Vote Viewer</title>
+  <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+</head>
+<body>
+<main class="wrap">
+  <p><a href="{{ app_prefix }}/">← Vote Viewer</a></p>
+
+  <header class="item-head">
+    <div class="muted">{{ kind|upper }} · {{ item.community_display }}</div>
+
+    {% if kind == 'post' %}
+      <div class="item-title-line">
+        {% if item.content_hidden %}
+          <h1 class="content-hidden">{{ item.post_title }}</h1>
+        {% else %}
+          <h1><a href="/post/{{ item.post_id }}">{{ item.post_title }}</a></h1>
+        {% endif %}
+        {% if item.remote_url %}
+          <a class="remote item-remote" title="Open original remote post" href="{{ item.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="item-title-line">
+        {% if item.post_hidden %}
+          <h1 class="content-hidden">{{ item.post_title }}</h1>
+        {% else %}
+          <h1><a href="/post/{{ item.post_id }}">{{ item.post_title }}</a></h1>
+        {% endif %}
+      </div>
+
+      <blockquote class="{{ 'content-hidden' if item.content_hidden else '' }}">{{ item.comment_content }}</blockquote>
+
+      {% if not item.content_hidden %}
+        <p class="item-links">
+          <a href="/comment/{{ item.comment_id }}">Open local comment ↗</a>
+          {% if item.remote_url %}
+            <a class="remote" title="Open original remote comment" href="{{ item.remote_url }}" target="_blank" rel="noopener noreferrer">🌐 Original</a>
+          {% endif %}
+        </p>
+      {% endif %}
+    {% endif %}
+  </header>
+
+  <section class="summary">
+    <div class="stats">
+      <span class="up"><b>{{ summary.up }}</b> ↑ upvotes</span>
+      <span class="down"><b>{{ summary.down }}</b> ↓ downvotes</span>
+      {% if summary.neutral %}<span class="neutral"><b>{{ summary.neutral }}</b> • neutral</span>{% endif %}
+      <span><b>{{ summary.total }}</b> total</span>
+    </div>
+  </section>
+
+  <section>
+    {% for row in rows %}
+      <div class="voter">
+        {% if row.score > 0 %}
+          <span class="vote-mark up">↑</span>
+        {% elif row.score < 0 %}
+          <span class="vote-mark down">↓</span>
+        {% else %}
+          <span class="vote-mark neutral">•</span>
+        {% endif %}
+
+        <a class="profile-link" title="Open local Lemmy profile" href="{{ row.voter_profile_path }}">👤</a>
+        <a class="voter-name" href="{{ row.voter_vote_path }}">{{ row.voter_display_name or row.voter_name }}</a>
+        <span class="voter-handle muted">{{ row.voter_display }}</span>
+        <span class="voter-time muted">{{ row.voted_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+    {% endfor %}
+  </section>
+
+  {% if pagination.page_count > 1 %}
+    <nav class="pagination" aria-label="Pagination">
+      {% if pagination.has_prev %}<a class="filter-button" href="{{ pagination.prev_url }}">← Previous</a>{% else %}<span></span>{% endif %}
+      <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} voters</span>
+      {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+</main>
+</body>
+</html>
