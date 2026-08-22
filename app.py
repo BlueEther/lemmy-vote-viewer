@@ -390,25 +390,23 @@ def resolve_user(cur, username):
 
 
 USER_SUGGESTIONS_SQL = """
-SELECT id, name, display_name, local, actor_id
-FROM person
-WHERE deleted = false
-  AND left(lower(name), char_length(%s)) = lower(%s)
+SELECT p.id, p.name, p.display_name, p.local, p.actor_id
+FROM person p
+LEFT JOIN instance i ON i.id = p.instance_id
+WHERE p.deleted = false
+  AND p.name ILIKE %s ESCAPE '\\'
   AND (
       %s::text IS NULL
       OR (
-          local = false
-          AND left(
-              lower(split_part(split_part(actor_id::text, '://', 2), '/', 1)),
-              char_length(%s)
-          ) = lower(%s)
+          p.local = false
+          AND i.domain ILIKE %s ESCAPE '\\'
       )
   )
 ORDER BY
-    CASE WHEN lower(name) = lower(%s) THEN 0 ELSE 1 END,
-    local DESC,
-    lower(name),
-    id
+    CASE WHEN lower(p.name) = lower(%s) THEN 0 ELSE 1 END,
+    p.local DESC,
+    lower(p.name),
+    p.id
 LIMIT %s
 """
 
@@ -433,20 +431,29 @@ def parse_user_suggestion_input(username):
     return name_prefix, domain_prefix
 
 
+def like_prefix_pattern(value):
+    return (
+        value.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        + "%"
+    )
+
+
 def find_user_suggestions(cur, username, limit=8):
     parsed = parse_user_suggestion_input(username)
     if not parsed:
         return []
     name_prefix, domain_prefix = parsed
+    name_pattern = like_prefix_pattern(name_prefix)
+    domain_pattern = like_prefix_pattern(domain_prefix) if domain_prefix is not None else None
 
     cur.execute(
         USER_SUGGESTIONS_SQL,
         (
-            name_prefix,
-            name_prefix,
+            name_pattern,
             domain_prefix,
-            domain_prefix,
-            domain_prefix,
+            domain_pattern,
             name_prefix,
             limit,
         ),
