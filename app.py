@@ -1049,14 +1049,7 @@ def instance_overview(domain):
                 vote_window_days=INSTANCE_VOTE_WINDOW_DAYS,
             )
             cur.execute(
-                """
-                SELECT
-                    set_config('statement_timeout', %s, true),
-                    set_config('work_mem', '64MB', true),
-                    set_config('max_parallel_workers_per_gather', '2', true),
-                    set_config('enable_nestloop', 'off', true),
-                    set_config('enable_sort', 'off', true)
-                """,
+                "SELECT set_config('statement_timeout', %s, true)",
                 (f"{INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
             )
             cur.execute(
