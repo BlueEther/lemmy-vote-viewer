@@ -468,34 +468,25 @@ def find_user_suggestions(cur, username, limit=8):
 
 
 USER_VOTES_SQL = """
-WITH votes AS (
+WITH filters AS (
+    SELECT
+        %s::text AS content_type,
+        %s::smallint AS score_filter
+),
+eligible_votes AS MATERIALIZED (
     SELECT
         pl.published AS voted_at,
         'post'::text AS type,
         pl.score,
-        p.id AS post_id,
-        NULL::integer AS comment_id,
-        CASE WHEN p.deleted THEN '[deleted post]'
-             WHEN p.removed THEN '[removed post]'
-             ELSE p.name END AS post_title,
-        NULL::text AS comment_content,
-        c.name AS community_name,
-        c.title AS community_title,
-        c.local AS community_local,
-        c.actor_id AS community_url,
-        CASE WHEN p.deleted OR p.removed OR author.deleted THEN NULL ELSE author.name END AS author_name,
-        CASE WHEN p.deleted OR p.removed OR author.deleted THEN NULL ELSE author.display_name END AS author_display_name,
-        author.local AS author_local,
-        author.actor_id AS author_url,
-        p.ap_id AS content_url,
-        p.local AS item_local,
-        (p.deleted OR p.removed) AS content_hidden,
-        (p.deleted OR p.removed) AS post_hidden
+        pl.post_id,
+        NULL::integer AS comment_id
     FROM post_like pl
     JOIN post p ON p.id = pl.post_id
     JOIN community c ON c.id = p.community_id
-    JOIN person author ON author.id = p.creator_id
+    CROSS JOIN filters f
     WHERE pl.person_id = %s
+      AND (f.content_type = 'all' OR f.content_type = 'post')
+      AND (f.score_filter IS NULL OR pl.score = f.score_filter)
       AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
@@ -506,43 +497,76 @@ WITH votes AS (
         cl.published AS voted_at,
         'comment'::text AS type,
         cl.score,
-        p.id AS post_id,
-        cm.id AS comment_id,
-        CASE WHEN p.deleted THEN '[deleted post]'
-             WHEN p.removed THEN '[removed post]'
-             ELSE p.name END AS post_title,
-        CASE WHEN p.deleted OR p.removed THEN '[comment on unavailable post]'
-             WHEN cm.deleted THEN '[deleted comment]'
-             WHEN cm.removed THEN '[removed comment]'
-             ELSE cm.content END AS comment_content,
-        c.name AS community_name,
-        c.title AS community_title,
-        c.local AS community_local,
-        c.actor_id AS community_url,
-        CASE WHEN p.deleted OR p.removed OR cm.deleted OR cm.removed OR author.deleted THEN NULL ELSE author.name END AS author_name,
-        CASE WHEN p.deleted OR p.removed OR cm.deleted OR cm.removed OR author.deleted THEN NULL ELSE author.display_name END AS author_display_name,
-        author.local AS author_local,
-        author.actor_id AS author_url,
-        cm.ap_id AS content_url,
-        cm.local AS item_local,
-        (p.deleted OR p.removed OR cm.deleted OR cm.removed) AS content_hidden,
-        (p.deleted OR p.removed) AS post_hidden
+        cl.post_id,
+        cl.comment_id
     FROM comment_like cl
-    JOIN comment cm ON cm.id = cl.comment_id
     JOIN post p ON p.id = cl.post_id
     JOIN community c ON c.id = p.community_id
-    JOIN person author ON author.id = cm.creator_id
+    CROSS JOIN filters f
     WHERE cl.person_id = %s
+      AND (f.content_type = 'all' OR f.content_type = 'comment')
+      AND (f.score_filter IS NULL OR cl.score = f.score_filter)
       AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
+),
+paged_votes AS MATERIALIZED (
+    SELECT *
+    FROM eligible_votes
+    ORDER BY voted_at DESC, type, post_id, comment_id
+    LIMIT %s OFFSET %s
 )
-SELECT *
-FROM votes
-WHERE (%s::text = 'all' OR type = %s::text)
-  AND (%s::smallint IS NULL OR score = %s::smallint)
-ORDER BY voted_at DESC
-LIMIT %s OFFSET %s
+SELECT
+    pv.voted_at,
+    pv.type,
+    pv.score,
+    pv.post_id,
+    pv.comment_id,
+    CASE WHEN p.deleted THEN '[deleted post]'
+         WHEN p.removed THEN '[removed post]'
+         ELSE p.name END AS post_title,
+    CASE WHEN pv.type = 'post' THEN NULL
+         WHEN p.deleted OR p.removed THEN '[comment on unavailable post]'
+         WHEN cm.deleted THEN '[deleted comment]'
+         WHEN cm.removed THEN '[removed comment]'
+         ELSE cm.content END AS comment_content,
+    c.name AS community_name,
+    c.title AS community_title,
+    c.local AS community_local,
+    c.actor_id AS community_url,
+    CASE
+        WHEN p.deleted OR p.removed OR author.deleted
+          OR (pv.type = 'comment' AND (cm.deleted OR cm.removed))
+        THEN NULL
+        ELSE author.name
+    END AS author_name,
+    CASE
+        WHEN p.deleted OR p.removed OR author.deleted
+          OR (pv.type = 'comment' AND (cm.deleted OR cm.removed))
+        THEN NULL
+        ELSE author.display_name
+    END AS author_display_name,
+    author.local AS author_local,
+    author.actor_id AS author_url,
+    CASE WHEN pv.type = 'post' THEN p.ap_id ELSE cm.ap_id END AS content_url,
+    CASE WHEN pv.type = 'post' THEN p.local ELSE cm.local END AS item_local,
+    (
+        p.deleted OR p.removed
+        OR (pv.type = 'comment' AND (cm.deleted OR cm.removed))
+    ) AS content_hidden,
+    (p.deleted OR p.removed) AS post_hidden
+FROM paged_votes pv
+JOIN post p ON p.id = pv.post_id
+JOIN community c ON c.id = p.community_id
+LEFT JOIN comment cm
+    ON pv.type = 'comment'
+   AND cm.id = pv.comment_id
+JOIN person author
+    ON author.id = CASE
+        WHEN pv.type = 'post' THEN p.creator_id
+        ELSE cm.creator_id
+    END
+ORDER BY pv.voted_at DESC, pv.type, pv.post_id, pv.comment_id
 """
 
 
@@ -969,9 +993,8 @@ def index():
                     cur.execute(
                         USER_VOTES_SQL,
                         (
+                            content_type, score_filter,
                             user["id"], user["id"],
-                            content_type, content_type,
-                            score_filter, score_filter,
                             PAGE_SIZE, pagination["offset"],
                         ),
                     )
