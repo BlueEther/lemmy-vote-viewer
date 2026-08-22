@@ -38,6 +38,7 @@ ERROR_MESSAGES = {
     400: "The request could not be understood.",
     404: "The requested page or item was not found.",
     500: "The viewer encountered an unexpected error.",
+    503: "The database query took too long. Please try again later.",
 }
 
 _raw_prefix = os.environ.get("APP_PREFIX", "/votes").strip()
@@ -112,6 +113,20 @@ def inject_app_config():
 @app.errorhandler(500)
 def handle_error(error):
     status_code = getattr(error, "code", 500)
+    return render_error(status_code)
+
+
+@app.errorhandler(psycopg.errors.QueryCanceled)
+def handle_query_timeout(error):
+    app.logger.warning(
+        "Database query timed out for %s %s",
+        request.method,
+        request.path,
+    )
+    return render_error(503)
+
+
+def render_error(status_code):
     return (
         render_template(
             "error.html",
@@ -390,25 +405,23 @@ def resolve_user(cur, username):
 
 
 USER_SUGGESTIONS_SQL = """
-SELECT id, name, display_name, local, actor_id
-FROM person
-WHERE deleted = false
-  AND left(lower(name), char_length(%s)) = lower(%s)
+SELECT p.id, p.name, p.display_name, p.local, p.actor_id
+FROM person p
+LEFT JOIN instance i ON i.id = p.instance_id
+WHERE p.deleted = false
+  AND p.name ILIKE %s ESCAPE '\\'
   AND (
       %s::text IS NULL
       OR (
-          local = false
-          AND left(
-              lower(split_part(split_part(actor_id::text, '://', 2), '/', 1)),
-              char_length(%s)
-          ) = lower(%s)
+          p.local = false
+          AND i.domain ILIKE %s ESCAPE '\\'
       )
   )
 ORDER BY
-    CASE WHEN lower(name) = lower(%s) THEN 0 ELSE 1 END,
-    local DESC,
-    lower(name),
-    id
+    CASE WHEN lower(p.name) = lower(%s) THEN 0 ELSE 1 END,
+    p.local DESC,
+    lower(p.name),
+    p.id
 LIMIT %s
 """
 
@@ -433,20 +446,29 @@ def parse_user_suggestion_input(username):
     return name_prefix, domain_prefix
 
 
+def like_prefix_pattern(value):
+    return (
+        value.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        + "%"
+    )
+
+
 def find_user_suggestions(cur, username, limit=8):
     parsed = parse_user_suggestion_input(username)
     if not parsed:
         return []
     name_prefix, domain_prefix = parsed
+    name_pattern = like_prefix_pattern(name_prefix)
+    domain_pattern = like_prefix_pattern(domain_prefix) if domain_prefix is not None else None
 
     cur.execute(
         USER_SUGGESTIONS_SQL,
         (
-            name_prefix,
-            name_prefix,
+            name_pattern,
             domain_prefix,
-            domain_prefix,
-            domain_prefix,
+            domain_pattern,
             name_prefix,
             limit,
         ),
@@ -468,34 +490,25 @@ def find_user_suggestions(cur, username, limit=8):
 
 
 USER_VOTES_SQL = """
-WITH votes AS (
+WITH filters AS (
+    SELECT
+        %s::text AS content_type,
+        %s::smallint AS score_filter
+),
+eligible_votes AS MATERIALIZED (
     SELECT
         pl.published AS voted_at,
         'post'::text AS type,
         pl.score,
-        p.id AS post_id,
-        NULL::integer AS comment_id,
-        CASE WHEN p.deleted THEN '[deleted post]'
-             WHEN p.removed THEN '[removed post]'
-             ELSE p.name END AS post_title,
-        NULL::text AS comment_content,
-        c.name AS community_name,
-        c.title AS community_title,
-        c.local AS community_local,
-        c.actor_id AS community_url,
-        CASE WHEN p.deleted OR p.removed OR author.deleted THEN NULL ELSE author.name END AS author_name,
-        CASE WHEN p.deleted OR p.removed OR author.deleted THEN NULL ELSE author.display_name END AS author_display_name,
-        author.local AS author_local,
-        author.actor_id AS author_url,
-        p.ap_id AS content_url,
-        p.local AS item_local,
-        (p.deleted OR p.removed) AS content_hidden,
-        (p.deleted OR p.removed) AS post_hidden
+        pl.post_id,
+        NULL::integer AS comment_id
     FROM post_like pl
     JOIN post p ON p.id = pl.post_id
     JOIN community c ON c.id = p.community_id
-    JOIN person author ON author.id = p.creator_id
+    CROSS JOIN filters f
     WHERE pl.person_id = %s
+      AND (f.content_type = 'all' OR f.content_type = 'post')
+      AND (f.score_filter IS NULL OR pl.score = f.score_filter)
       AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
@@ -506,43 +519,76 @@ WITH votes AS (
         cl.published AS voted_at,
         'comment'::text AS type,
         cl.score,
-        p.id AS post_id,
-        cm.id AS comment_id,
-        CASE WHEN p.deleted THEN '[deleted post]'
-             WHEN p.removed THEN '[removed post]'
-             ELSE p.name END AS post_title,
-        CASE WHEN p.deleted OR p.removed THEN '[comment on unavailable post]'
-             WHEN cm.deleted THEN '[deleted comment]'
-             WHEN cm.removed THEN '[removed comment]'
-             ELSE cm.content END AS comment_content,
-        c.name AS community_name,
-        c.title AS community_title,
-        c.local AS community_local,
-        c.actor_id AS community_url,
-        CASE WHEN p.deleted OR p.removed OR cm.deleted OR cm.removed OR author.deleted THEN NULL ELSE author.name END AS author_name,
-        CASE WHEN p.deleted OR p.removed OR cm.deleted OR cm.removed OR author.deleted THEN NULL ELSE author.display_name END AS author_display_name,
-        author.local AS author_local,
-        author.actor_id AS author_url,
-        cm.ap_id AS content_url,
-        cm.local AS item_local,
-        (p.deleted OR p.removed OR cm.deleted OR cm.removed) AS content_hidden,
-        (p.deleted OR p.removed) AS post_hidden
+        cl.post_id,
+        cl.comment_id
     FROM comment_like cl
-    JOIN comment cm ON cm.id = cl.comment_id
     JOIN post p ON p.id = cl.post_id
     JOIN community c ON c.id = p.community_id
-    JOIN person author ON author.id = cm.creator_id
+    CROSS JOIN filters f
     WHERE cl.person_id = %s
+      AND (f.content_type = 'all' OR f.content_type = 'comment')
+      AND (f.score_filter IS NULL OR cl.score = f.score_filter)
       AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
+),
+paged_votes AS MATERIALIZED (
+    SELECT *
+    FROM eligible_votes
+    ORDER BY voted_at DESC, type, post_id, comment_id
+    LIMIT %s OFFSET %s
 )
-SELECT *
-FROM votes
-WHERE (%s::text = 'all' OR type = %s::text)
-  AND (%s::smallint IS NULL OR score = %s::smallint)
-ORDER BY voted_at DESC
-LIMIT %s OFFSET %s
+SELECT
+    pv.voted_at,
+    pv.type,
+    pv.score,
+    pv.post_id,
+    pv.comment_id,
+    CASE WHEN p.deleted THEN '[deleted post]'
+         WHEN p.removed THEN '[removed post]'
+         ELSE p.name END AS post_title,
+    CASE WHEN pv.type = 'post' THEN NULL
+         WHEN p.deleted OR p.removed THEN '[comment on unavailable post]'
+         WHEN cm.deleted THEN '[deleted comment]'
+         WHEN cm.removed THEN '[removed comment]'
+         ELSE cm.content END AS comment_content,
+    c.name AS community_name,
+    c.title AS community_title,
+    c.local AS community_local,
+    c.actor_id AS community_url,
+    CASE
+        WHEN p.deleted OR p.removed OR author.deleted
+          OR (pv.type = 'comment' AND (cm.deleted OR cm.removed))
+        THEN NULL
+        ELSE author.name
+    END AS author_name,
+    CASE
+        WHEN p.deleted OR p.removed OR author.deleted
+          OR (pv.type = 'comment' AND (cm.deleted OR cm.removed))
+        THEN NULL
+        ELSE author.display_name
+    END AS author_display_name,
+    author.local AS author_local,
+    author.actor_id AS author_url,
+    CASE WHEN pv.type = 'post' THEN p.ap_id ELSE cm.ap_id END AS content_url,
+    CASE WHEN pv.type = 'post' THEN p.local ELSE cm.local END AS item_local,
+    (
+        p.deleted OR p.removed
+        OR (pv.type = 'comment' AND (cm.deleted OR cm.removed))
+    ) AS content_hidden,
+    (p.deleted OR p.removed) AS post_hidden
+FROM paged_votes pv
+JOIN post p ON p.id = pv.post_id
+JOIN community c ON c.id = p.community_id
+LEFT JOIN comment cm
+    ON pv.type = 'comment'
+   AND cm.id = pv.comment_id
+JOIN person author
+    ON author.id = CASE
+        WHEN pv.type = 'post' THEN p.creator_id
+        ELSE cm.creator_id
+    END
+ORDER BY pv.voted_at DESC, pv.type, pv.post_id, pv.comment_id
 """
 
 
@@ -788,7 +834,7 @@ FROM post_like pl
 JOIN person voter ON voter.id = pl.person_id
 WHERE pl.post_id = %s
   AND voter.deleted = false
-ORDER BY pl.score DESC, lower(voter.name)
+ORDER BY pl.score DESC, lower(voter.name), voter.id
 LIMIT %s OFFSET %s
 """
 
@@ -806,7 +852,7 @@ FROM comment_like cl
 JOIN person voter ON voter.id = cl.person_id
 WHERE cl.comment_id = %s
   AND voter.deleted = false
-ORDER BY cl.score DESC, lower(voter.name)
+ORDER BY cl.score DESC, lower(voter.name), voter.id
 LIMIT %s OFFSET %s
 """
 
@@ -969,9 +1015,8 @@ def index():
                     cur.execute(
                         USER_VOTES_SQL,
                         (
+                            content_type, score_filter,
                             user["id"], user["id"],
-                            content_type, content_type,
-                            score_filter, score_filter,
                             PAGE_SIZE, pagination["offset"],
                         ),
                     )
@@ -1049,14 +1094,7 @@ def instance_overview(domain):
                 vote_window_days=INSTANCE_VOTE_WINDOW_DAYS,
             )
             cur.execute(
-                """
-                SELECT
-                    set_config('statement_timeout', %s, true),
-                    set_config('work_mem', '64MB', true),
-                    set_config('max_parallel_workers_per_gather', '2', true),
-                    set_config('enable_nestloop', 'off', true),
-                    set_config('enable_sort', 'off', true)
-                """,
+                "SELECT set_config('statement_timeout', %s, true)",
                 (f"{INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
             )
             cur.execute(
