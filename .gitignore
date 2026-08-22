@@ -5,6 +5,9 @@
 .env
 .env.*
 !.env.example
+!.env.local.example
+*.dump
+*.backup
 
 # Python bytecode and virtual environments
 __pycache__/
