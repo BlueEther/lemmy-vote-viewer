@@ -67,6 +67,7 @@ GRANT USAGE ON SCHEMA public TO vote_viewer;
 \echo 'Removing previous table-level privileges...'
 
 REVOKE ALL PRIVILEGES ON TABLE
+    public.instance,
     public.person,
     public.post,
     public.comment,
@@ -85,6 +86,7 @@ DECLARE
     column_list text;
 BEGIN
     FOREACH table_name IN ARRAY ARRAY[
+        'instance',
         'person',
         'post',
         'comment',
@@ -145,6 +147,16 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Required read-only permissions
 -- ---------------------------------------------------------------------------
+
+\echo ''
+\echo 'Granting SELECT access to required columns on [instance]...'
+
+GRANT SELECT (
+    id,
+    domain
+)
+ON public.instance
+TO vote_viewer;
 
 \echo ''
 \echo 'Granting SELECT access to required columns on [person]...'

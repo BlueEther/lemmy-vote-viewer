@@ -19,6 +19,21 @@ if not APP_VERSION:
     raise RuntimeError("VERSION file is empty")
 DB_DSN = os.environ["DATABASE_URL"]
 
+
+def boolean_env(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise RuntimeError(f"{name} must be either true or false")
+
+
+ENABLE_DOMAIN_SEARCH = boolean_env("ENABLE_DOMAIN_SEARCH", False)
+
 ERROR_MESSAGES = {
     400: "The request could not be understood.",
     404: "The requested page or item was not found.",
@@ -33,6 +48,14 @@ try:
 except ValueError:
     PAGE_SIZE = 100
 PAGE_SIZE = max(20, min(PAGE_SIZE, 250))
+
+try:
+    INSTANCE_QUERY_TIMEOUT_SECONDS = int(
+        os.environ.get("INSTANCE_QUERY_TIMEOUT_SECONDS", "12")
+    )
+except ValueError:
+    INSTANCE_QUERY_TIMEOUT_SECONDS = 12
+INSTANCE_QUERY_TIMEOUT_SECONDS = max(5, min(INSTANCE_QUERY_TIMEOUT_SECONDS, 12))
 
 TIMEZONE_NAME = os.environ.get("TIMEZONE", "UTC").strip() or "UTC"
 try:
@@ -72,6 +95,7 @@ def inject_app_config():
         "app_version": APP_VERSION,
         "lemmy_base_url": LEMMY_BASE_URL,
         "lemmy_instance": LEMMY_INSTANCE,
+        "domain_search_enabled": ENABLE_DOMAIN_SEARCH,
     }
 
 
@@ -271,8 +295,39 @@ def build_item_url(kind, item_id, page=1):
     return f"{path}?{urlencode({'page': page})}" if page > 1 else path
 
 
+def build_instance_url(domain, sort="total", page=1):
+    path = f"{APP_PREFIX}/instance/{quote(domain, safe='.-')}"
+    params = {}
+    if sort != "total":
+        params["sort"] = sort
+    if page > 1:
+        params["page"] = str(page)
+    return f"{path}?{urlencode(params)}" if params else path
+
+
 def vote_history_path(handle):
     return build_index_url(handle, "all", None, 1) if handle else None
+
+
+INSTANCE_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def normalize_instance_domain(value):
+    value = value.strip().lower().rstrip(".")
+    if value.startswith("@"):
+        value = value[1:]
+    if not value or len(value) > 253 or "/" in value or "@" in value:
+        return None
+    try:
+        value = value.encode("idna").decode("ascii")
+    except UnicodeError:
+        return None
+    if len(value) > 253:
+        return None
+    labels = value.split(".")
+    if not labels or any(not INSTANCE_LABEL.fullmatch(label) for label in labels):
+        return None
+    return value
 
 
 def resolve_user(cur, username):
@@ -543,6 +598,123 @@ LIMIT 1
 """
 
 
+INSTANCE_LOOKUP_SQL = """
+SELECT id, domain
+FROM instance
+WHERE domain = %s
+LIMIT 1
+"""
+
+
+INSTANCE_OVERVIEW_SQL = """
+WITH instance_users AS (
+    SELECT id, name, display_name, local, actor_id
+    FROM person
+    WHERE instance_id = %s
+      AND deleted = false
+),
+votes AS (
+    SELECT pl.person_id, pl.score, pl.published AS voted_at
+    FROM instance_users iu
+    JOIN post_like pl ON pl.person_id = iu.id
+    JOIN post p ON p.id = pl.post_id
+    JOIN community c ON c.id = p.community_id
+    WHERE c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+
+    UNION ALL
+
+    SELECT cl.person_id, cl.score, cl.published AS voted_at
+    FROM instance_users iu
+    JOIN comment_like cl ON cl.person_id = iu.id
+    JOIN post p ON p.id = cl.post_id
+    JOIN community c ON c.id = p.community_id
+    WHERE c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+),
+vote_totals AS (
+    SELECT
+        person_id,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE score > 0) AS up,
+        COUNT(*) FILTER (WHERE score < 0) AS down,
+        COUNT(*) FILTER (WHERE score = 0) AS neutral,
+        MAX(voted_at) AS latest_vote
+    FROM votes
+    GROUP BY person_id
+),
+summary AS (
+    SELECT
+        (SELECT COUNT(*) FROM instance_users) AS known_users,
+        COUNT(*) AS voting_users,
+        COALESCE(SUM(total), 0) AS total,
+        COALESCE(SUM(up), 0) AS up,
+        COALESCE(SUM(down), 0) AS down,
+        COALESCE(SUM(neutral), 0) AS neutral
+    FROM vote_totals
+),
+ranked_users AS (
+    SELECT
+        iu.id,
+        iu.name,
+        iu.display_name,
+        iu.local,
+        iu.actor_id,
+        vt.total,
+        vt.up,
+        vt.down,
+        vt.neutral,
+        vt.latest_vote,
+        ROW_NUMBER() OVER (ORDER BY {order_by}) AS sort_position
+    FROM instance_users iu
+    JOIN vote_totals vt ON vt.person_id = iu.id
+),
+paged_users AS (
+    SELECT *
+    FROM ranked_users
+    WHERE sort_position > %s
+      AND sort_position <= %s
+)
+SELECT
+    summary.known_users,
+    summary.voting_users,
+    summary.total AS summary_total,
+    summary.up AS summary_up,
+    summary.down AS summary_down,
+    summary.neutral AS summary_neutral,
+    pu.id,
+    pu.name,
+    pu.display_name,
+    pu.local,
+    pu.actor_id,
+    pu.total,
+    pu.up,
+    pu.down,
+    pu.neutral,
+    pu.latest_vote,
+    pu.sort_position
+FROM summary
+LEFT JOIN paged_users pu ON true
+ORDER BY pu.sort_position
+"""
+
+
+INSTANCE_SORTS = {
+    "total": "vt.total DESC, lower(iu.name), iu.id",
+    "down": "vt.down DESC, vt.total DESC, lower(iu.name), iu.id",
+    "down_ratio": (
+        "CASE WHEN vt.total >= 10 "
+        "THEN vt.down::numeric / vt.total ELSE -1 END DESC, "
+        "vt.total DESC, lower(iu.name), iu.id"
+    ),
+    "up": "vt.up DESC, vt.total DESC, lower(iu.name), iu.id",
+    "recent": "vt.latest_vote DESC, lower(iu.name), iu.id",
+    "username": "lower(iu.name), iu.id",
+}
+
+
 POST_ITEM_SQL = """
 SELECT
     p.id AS post_id,
@@ -705,6 +877,15 @@ def enrich_voter(row):
     return row
 
 
+def enrich_instance_user(row):
+    row = dict(row)
+    handle = make_handle(row["name"], row["local"], row["actor_id"])
+    row["handle"] = handle
+    row["vote_path"] = vote_history_path(handle)
+    row["down_percent"] = (row["down"] / row["total"] * 100) if row["total"] else 0
+    return row
+
+
 def resolve_item_search(item_query):
     parsed = parse_item_search(item_query)
     if not parsed:
@@ -737,6 +918,18 @@ def index():
         item_result, item_error = resolve_item_search(item_query)
         if item_result:
             return redirect(build_item_url(*item_result))
+
+    instance_query = ""
+    instance_error = None
+    if ENABLE_DOMAIN_SEARCH:
+        instance_query = request.args.get("instance", "").strip()
+        if len(instance_query) > 255:
+            abort(400)
+        if instance_query:
+            instance_domain = normalize_instance_domain(instance_query)
+            if instance_domain:
+                return redirect(build_instance_url(instance_domain))
+            instance_error = "invalid"
 
     content_type = request.args.get("type", "all")
     if content_type not in ("all", "post", "comment"):
@@ -805,6 +998,8 @@ def index():
         username=username,
         item_query=item_query,
         item_error=item_error,
+        instance_query=instance_query,
+        instance_error=instance_error,
         user=user,
         user_suggestions=user_suggestions,
         rows=rows,
@@ -814,6 +1009,93 @@ def index():
         score_filter=score_filter,
         type_urls=type_urls,
         score_urls=score_urls,
+    )
+
+
+@app.route("/instance/<domain>")
+def instance_overview(domain):
+    if not ENABLE_DOMAIN_SEARCH:
+        abort(404)
+
+    normalized_domain = normalize_instance_domain(domain)
+    if not normalized_domain:
+        abort(404)
+
+    sort = request.args.get("sort", "total")
+    if sort not in INSTANCE_SORTS:
+        sort = "total"
+    requested_page = parse_page()
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(INSTANCE_LOOKUP_SQL, (normalized_domain,))
+            instance = cur.fetchone()
+            if not instance:
+                abort(404)
+
+            canonical_domain = normalize_instance_domain(instance["domain"])
+            if not canonical_domain:
+                abort(404)
+
+            requested_offset = (requested_page - 1) * PAGE_SIZE
+            overview_sql = INSTANCE_OVERVIEW_SQL.format(
+                order_by=INSTANCE_SORTS[sort]
+            )
+            cur.execute(
+                "SELECT set_config('statement_timeout', %s, true)",
+                (f"{INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
+            )
+            cur.execute(
+                overview_sql,
+                (
+                    instance["id"],
+                    requested_offset,
+                    requested_offset + PAGE_SIZE,
+                ),
+            )
+            result_rows = cur.fetchall()
+            overview = result_rows[0]
+            summary = {
+                "known_users": overview["known_users"],
+                "voting_users": overview["voting_users"],
+                "total": overview["summary_total"],
+                "up": overview["summary_up"],
+                "down": overview["summary_down"],
+                "neutral": overview["summary_neutral"],
+            }
+            pagination = make_pagination(summary["voting_users"], requested_page)
+            if pagination["page"] != requested_page:
+                return redirect(
+                    build_instance_url(canonical_domain, sort, pagination["page"])
+                )
+            rows = [
+                enrich_instance_user(row)
+                for row in result_rows
+                if row["id"] is not None
+            ]
+
+    sort_urls = {
+        key: build_instance_url(canonical_domain, key)
+        for key in INSTANCE_SORTS
+    }
+    if pagination["has_prev"]:
+        pagination["prev_url"] = build_instance_url(
+            canonical_domain, sort, pagination["prev_page"]
+        )
+    if pagination["has_next"]:
+        pagination["next_url"] = build_instance_url(
+            canonical_domain, sort, pagination["next_page"]
+        )
+
+    return render_template(
+        "instance.html",
+        instance=instance,
+        domain=canonical_domain,
+        summary=summary,
+        rows=rows,
+        sort=sort,
+        sort_urls=sort_urls,
+        pagination=pagination,
     )
 
 
