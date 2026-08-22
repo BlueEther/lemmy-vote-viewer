@@ -14,33 +14,36 @@ comment votes, and inspect the voters recorded for individual items.
 
 ![Voter list for an individual Lemmy comment](docs/images/item-voters.png)
 
+### Review an instance's recent voters
+
+![Instance vote overview with recent vote totals and sorting controls](docs/images/instance-overview.png)
+
 ## Features
 
-- local users: `BlueEther`
-- remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
-- username and partial-instance suggestions after an unsuccessful search
-- locally recorded upvote/downvote totals and per-item received-vote history
-  for each searched user
-- post and comment lookup by local path or ActivityPub URL
-- optional instance-level summaries and sortable per-user totals for recently
-  recorded local votes (30 days by default)
-- public communities only in user histories and item voter lists
-- removed/deleted post and comment text is redacted
-- deleted users are excluded from voter lists/search
-- title/comment links go to the local Lemmy copy
-- globe links only appear for remote HTTP(S) originals
-- voter names link to their vote history
-- profile icons link to the local Lemmy profile
-- server-side type/vote filters
-- pagination (default 100, configurable 20–250)
-- neutral-score handling
-- strict CSP/no-cache/security headers
-- no inline JavaScript
-- read-only DB connection settings in the app
-- non-root hardened Docker runtime
-- application version and configured Lemmy instance shown in the footer
-- configurable display timezone
-- friendly error pages without internal error details
+- Search vote histories for local and known remote users
+- Find users through username and partial-instance suggestions
+- View locally recorded votes cast and received
+- Browse received votes for each post and comment
+- Look up posts and comments by local path or ActivityPub URL
+- Inspect the voters recorded for individual posts and comments
+- Filter vote histories by content type and vote direction
+- Sort received-vote histories by date or score
+- Review optional instance-level summaries and recent per-user vote totals
+- Follow links to local profiles, content, vote histories, and remote originals
+- Paginate large result sets with a configurable page size
+- Restrict user histories and item voter lists to public, active communities
+- Redact removed or deleted posts and comments
+- Exclude deleted users from searches and voter lists
+- Display timestamps in a configurable timezone
+
+## Security and deployment
+
+- Read-only PostgreSQL access
+- Strict CSP, no-cache, and other security headers
+- No inline JavaScript
+- Hardened non-root Docker container with a read-only filesystem
+- Application version and configured Lemmy instance shown in the footer
+- Friendly error pages without internal details
 
 ## Security note
 
@@ -74,7 +77,6 @@ instance overview.
 - Add community filtering by `!community` or `!community@instance`.
 - Preserve community, sorting, and other filters in shareable URLs.
 - Allow sorting votes by newest or oldest.
-- Add a configurable `LEMMY_BASE_URL`.
 - Add automated tests.
 - Document supported Lemmy versions and database compatibility.
 
@@ -90,6 +92,46 @@ instance overview.
 - Document upgrading, rebuilding, and rerunning `db-grants.sql`.
 - Provide example Caddy access-control and optional-authentication configurations.
 - Add structured request and error logging.
+
+## Deploying from Git
+
+Clone the repository on the server:
+
+```bash
+git clone https://github.com/BlueEther/lemmy-vote-viewer.git
+cd lemmy-vote-viewer
+```
+
+The default checkout follows `main`. For a reproducible production deployment,
+select a release tag instead (replace `v0.5.0` with the version being deployed):
+
+```bash
+git fetch --tags
+git switch --detach v0.5.0
+```
+
+Create the deployment configuration and restrict access to it:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+Edit `.env`, then complete the [database setup](#build-environment),
+[Docker deployment](#run-docker), and [Caddy configuration](#caddy) below.
+Re-run `db-grants.sql` before rebuilding whenever a new release requires access
+to additional Lemmy tables or columns.
+
+To update a deployment that follows `main`:
+
+```bash
+git switch main
+git pull --ff-only origin main
+docker compose up -d --build --force-recreate
+```
+
+For tagged deployments, fetch the tags and switch to the new version instead
+of pulling `main`.
 
 ## Environment
 
@@ -176,9 +218,7 @@ read-only access to additional Lemmy columns or aggregate tables.
 No host port needs to be published because Caddy and this container share the Docker network:
 
 ```bash
-docker rm -f lemmy-vote-viewer
-
-docker compose up -d --build
+docker compose up -d --build --force-recreate
 ```
 
 or (if nothing has changed)
@@ -187,7 +227,80 @@ or (if nothing has changed)
 docker compose up -d
 ```
 
-## Local database testing
+stop
+
+```bash
+docker rm -f lemmy-vote-viewer
+```
+
+## Caddy
+
+For the existing path-based deployment, place the following in the Lemmy site
+block after any bot or ASN blocking rules you may have configured. Place it
+immediately before `reverse_proxy http://lemmy-ui:1234`:
+
+```caddy
+
+	##########  Bot block ends  ##########
+	######################################
+	
+	redir /votes /votes/ 308
+	
+	handle_path /votes/* {
+		reverse_proxy lemmy-vote-viewer:8080
+	}
+	
+	reverse_proxy http://lemmy-ui:1234
+```
+
+With that configuration, keep the application prefix in `.env`:
+
+```text
+APP_PREFIX=/votes
+```
+
+## Checks
+
+```bash
+docker logs lemmy-vote-viewer
+```
+
+Verify it is non-root:
+
+```bash
+docker exec lemmy-vote-viewer id
+```
+
+Expected:
+
+```text
+uid=10001(voteviewer) gid=10001(voteviewer)
+```
+
+Verify the root filesystem is read-only:
+
+```bash
+docker exec lemmy-vote-viewer touch /app/test
+```
+
+That should fail with `Read-only file system`.
+
+Verify Caddy can reach it:
+
+```bash
+docker exec lemmy-easy-deploy-proxy-1 \
+  wget -qO- http://lemmy-vote-viewer:8080/ | head
+```
+
+## Data semantics
+
+This viewer shows the current vote state stored by this Lemmy instance. 
+It is not a permanent audit log of removed or changed votes. 
+Remote-user data is limited to what has already federated to and is stored by this instance.
+Instance-level totals are limited to the configured recent-vote window, which
+defaults to 30 days.
+
+## Local database testing (preproduction testing)
 
 The production Compose file expects an existing Lemmy Docker network and
 database. For isolated development, `compose.local.yml` runs the viewer with a
@@ -266,86 +379,21 @@ The database remains in a named Docker volume. Adding `--volumes` to the `down`
 command permanently deletes that local database and requires a fresh restore.
 The local services do not restart automatically when Docker Desktop starts.
 
-## Caddy
-
-For the existing path-based deployment, place the following in the Lemmy site
-block after any bot or ASN blocking rules you may have configured. Place it
-immediately before `reverse_proxy http://lemmy-ui:1234`:
-
-```caddy
-
-	##########  Bot block ends  ##########
-	######################################
-	
-	redir /votes /votes/ 308
-	
-	handle_path /votes/* {
-		reverse_proxy lemmy-vote-viewer:8080
-	}
-	
-	reverse_proxy http://lemmy-ui:1234
-```
-
-With that configuration, keep the application prefix in `.env`:
-
-```text
-APP_PREFIX=/votes
-```
-
-## Checks
-
-```bash
-docker logs lemmy-vote-viewer
-```
-
-Verify it is non-root:
-
-```bash
-docker exec lemmy-vote-viewer id
-```
-
-Expected:
-
-```text
-uid=10001(voteviewer) gid=10001(voteviewer)
-```
-
-Verify the root filesystem is read-only:
-
-```bash
-docker exec lemmy-vote-viewer touch /app/test
-```
-
-That should fail with `Read-only file system`.
-
-Verify Caddy can reach it:
-
-```bash
-docker exec lemmy-easy-deploy-proxy-1 \
-  wget -qO- http://lemmy-vote-viewer:8080/ | head
-```
-
-## Data semantics
-
-This viewer shows the current vote state stored by this Lemmy instance. 
-It is not a permanent audit log of removed or changed votes. 
-Remote-user data is limited to what has already federated to and is stored by this instance.
-Instance-level totals are limited to the configured recent-vote window, which
-defaults to 30 days.
-
-
 ## LLM declaration
 
-ChatGPT 5.6 Sol was used for the framework and SQL, followed by manual work
+ChatGPT 5.6 Sol was used for the framework and inital SQL, followed by manual work
 with LLM support. An LLM was used to create the HTML templates, which were then
 manually edited to tidy them and add elements.
 
 Security was then checked with Codex and GitHub Copilot.
 
+Codex was uesed to refactor the SQL and gain significent speedup. It was also used for 
+extending out the domain and user searching
+
 ## License
 
 Copyright (C) 2026 BlueEther@no.lastname.nz
--- SPDX-License-Identifier: AGPL-3.0-or-later
+SPDX-License-Identifier: AGPL-3.0-or-later
 
 This project is free software licensed under the GNU Affero General Public
 License, version 3 or (at your option) any later version. See [LICENSE](LICENSE)
