@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+*.dump
 
 # Python bytecode and virtual environments
 __pycache__/
