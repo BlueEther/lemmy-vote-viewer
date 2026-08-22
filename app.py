@@ -629,6 +629,45 @@ FROM votes
 """
 
 
+USER_RECEIVED_SUMMARY_SQL = """
+WITH received_by_type AS (
+    SELECT
+        'post'::text AS type,
+        COALESCE(SUM(pa.upvotes), 0)::bigint AS up,
+        COALESCE(SUM(pa.downvotes), 0)::bigint AS down
+    FROM post_aggregates pa
+    JOIN community c ON c.id = pa.community_id
+    WHERE pa.creator_id = %s
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+
+    UNION ALL
+
+    SELECT
+        'comment'::text AS type,
+        COALESCE(SUM(ca.upvotes), 0)::bigint AS up,
+        COALESCE(SUM(ca.downvotes), 0)::bigint AS down
+    FROM comment cm
+    JOIN comment_aggregates ca ON ca.comment_id = cm.id
+    JOIN post p ON p.id = cm.post_id
+    JOIN community c ON c.id = p.community_id
+    WHERE cm.creator_id = %s
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+)
+SELECT
+    COALESCE(SUM(up + down), 0)::bigint AS total,
+    COALESCE(SUM(up), 0)::bigint AS up,
+    COALESCE(SUM(down), 0)::bigint AS down,
+    0::bigint AS neutral,
+    COALESCE(SUM(up + down) FILTER (WHERE type = 'post'), 0)::bigint AS posts,
+    COALESCE(SUM(up + down) FILTER (WHERE type = 'comment'), 0)::bigint AS comments
+FROM received_by_type
+"""
+
+
 ITEM_BY_AP_ID_SQL = """
 SELECT 'post'::text AS kind, p.id AS item_id
 FROM post p
@@ -993,6 +1032,7 @@ def index():
 
     rows = []
     summary = None
+    received_summary = None
     user = None
     pagination = None
     type_urls = {}
@@ -1011,6 +1051,12 @@ def index():
                     )
                     summary = cur.fetchone()
                     pagination = make_pagination(summary["filtered_total"], requested_page)
+
+                    cur.execute(
+                        USER_RECEIVED_SUMMARY_SQL,
+                        (user["id"], user["id"]),
+                    )
+                    received_summary = cur.fetchone()
 
                     cur.execute(
                         USER_VOTES_SQL,
@@ -1055,6 +1101,7 @@ def index():
         user_suggestions=user_suggestions,
         rows=rows,
         summary=summary,
+        received_summary=received_summary,
         pagination=pagination,
         content_type=content_type,
         score_filter=score_filter,

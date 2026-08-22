@@ -85,13 +85,26 @@
         <div class="muted">@{{ user.handle }}</div>
       </div>
 
-      <div class="stats">
-        <span><b>{{ summary.total }}</b> current votes</span>
-        <span class="up"><b>{{ summary.up }}</b> ↑</span>
-        <span class="down"><b>{{ summary.down }}</b> ↓</span>
-        {% if summary.neutral %}<span class="neutral"><b>{{ summary.neutral }}</b> •</span>{% endif %}
-        <span><b>{{ summary.posts }}</b> posts</span>
-        <span><b>{{ summary.comments }}</b> comments</span>
+      <div class="vote-summaries">
+        <div class="stats">
+          <span class="stats-label">Votes cast</span>
+          <span><b>{{ summary.total }}</b> total</span>
+          <span class="up"><b>{{ summary.up }}</b> ↑</span>
+          <span class="down"><b>{{ summary.down }}</b> ↓</span>
+          {% if summary.neutral %}<span class="neutral"><b>{{ summary.neutral }}</b> •</span>{% endif %}
+          <span><b>{{ summary.posts }}</b> on posts</span>
+          <span><b>{{ summary.comments }}</b> on comments</span>
+        </div>
+        <div class="stats">
+          <span class="stats-label">Votes received</span>
+          <span><b>{{ received_summary.total }}</b> total</span>
+          <span class="up"><b>{{ received_summary.up }}</b> ↑</span>
+          <span class="down"><b>{{ received_summary.down }}</b> ↓</span>
+          {% if received_summary.neutral %}<span class="neutral"><b>{{ received_summary.neutral }}</b> •</span>{% endif %}
+          <span><b>{{ received_summary.posts }}</b> on posts</span>
+          <span><b>{{ received_summary.comments }}</b> on comments</span>
+        </div>
+        <div class="summary-note muted">Received totals are votes recorded locally on content in public communities.</div>
       </div>
     </section>
 

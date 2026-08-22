@@ -73,7 +73,9 @@ REVOKE ALL PRIVILEGES ON TABLE
     public.comment,
     public.community,
     public.post_like,
-    public.comment_like
+    public.comment_like,
+    public.post_aggregates,
+    public.comment_aggregates
 FROM vote_viewer;
 
 
@@ -92,7 +94,9 @@ BEGIN
         'comment',
         'community',
         'post_like',
-        'comment_like'
+        'comment_like',
+        'post_aggregates',
+        'comment_aggregates'
     ]
     LOOP
 
@@ -249,6 +253,31 @@ GRANT SELECT (
     published
 )
 ON public.comment_like
+TO vote_viewer;
+
+
+\echo ''
+\echo 'Granting SELECT access to required columns on [post_aggregates]...'
+
+GRANT SELECT (
+    creator_id,
+    community_id,
+    upvotes,
+    downvotes
+)
+ON public.post_aggregates
+TO vote_viewer;
+
+
+\echo ''
+\echo 'Granting SELECT access to required columns on [comment_aggregates]...'
+
+GRANT SELECT (
+    comment_id,
+    upvotes,
+    downvotes
+)
+ON public.comment_aggregates
 TO vote_viewer;
 
 

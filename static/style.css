@@ -108,6 +108,25 @@ button { cursor: pointer; }
   gap: 16px;
 }
 
+.vote-summaries {
+  display: grid;
+  gap: 10px;
+}
+
+.vote-summaries .stats { justify-content: flex-end; }
+
+.stats-label {
+  min-width: 104px;
+  color: #cbd0db;
+  font-weight: 600;
+}
+
+.summary-note {
+  max-width: 680px;
+  font-size: .85rem;
+  text-align: right;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -386,6 +405,9 @@ blockquote {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .vote-summaries .stats { justify-content: flex-start; }
+  .summary-note { text-align: left; }
 
   .search { flex-direction: column; }
   .search input { max-width: none; }
