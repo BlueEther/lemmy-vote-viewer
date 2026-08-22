@@ -157,6 +157,85 @@ or (if nothing has changed)
 docker compose up -d
 ```
 
+## Local database testing
+
+The production Compose file expects an existing Lemmy Docker network and
+database. For isolated development, `compose.local.yml` runs the viewer with a
+local PostgreSQL container and publishes the viewer only on the loopback
+interface.
+
+First check the PostgreSQL major version on the production database:
+
+```bash
+docker exec lemmy-easy-deploy-postgres-1 \
+  psql -U lemmy -d lemmy -Atc 'SHOW server_version;'
+```
+
+Create the local environment file and set `POSTGRES_IMAGE` to the matching
+major version. Replace both example passwords with local-only passwords, and
+keep `DATABASE_URL` in sync with `VOTE_VIEWER_PASSWORD`:
+
+```bash
+cp .env.local.example .env.local
+chmod 600 .env.local
+```
+
+If the viewer password contains URL-special characters, percent-encode it only
+in `DATABASE_URL`, as described in the main environment section above.
+
+Create a custom-format logical dump on the production host. Treat this file as
+production-sensitive data and transfer it to the development machine using a
+secure method:
+
+```bash
+docker exec lemmy-easy-deploy-postgres-1 \
+  pg_dump -U lemmy -d lemmy -Fc --no-owner --no-acl \
+  > lemmy-local-test.dump
+```
+
+Start only the local database:
+
+```bash
+docker compose --env-file .env.local -f compose.local.yml up -d postgres
+```
+
+Restore the dump into the empty local database:
+
+```bash
+docker compose --env-file .env.local -f compose.local.yml exec -T postgres \
+  pg_restore -U lemmy -d lemmy --no-owner --no-acl --exit-on-error \
+  < /path/to/lemmy-local-test.dump
+```
+
+Apply the viewer's restricted grants and regenerate query-planner statistics:
+
+```bash
+docker compose --env-file .env.local -f compose.local.yml exec -T postgres \
+  psql -U lemmy -d lemmy < db-grants.sql
+
+docker compose --env-file .env.local -f compose.local.yml exec -T postgres \
+  psql -U lemmy -d lemmy -c 'ANALYZE;'
+```
+
+Build and start the viewer:
+
+```bash
+docker compose --env-file .env.local -f compose.local.yml up -d --build
+```
+
+Open <http://127.0.0.1:8080/>. The local PostgreSQL port is not published to
+the host or local network.
+
+To stop the local stack while retaining the restored database:
+
+```bash
+docker compose --env-file .env.local -f compose.local.yml down
+```
+
+The database remains in a named Docker volume. Adding `--volumes` to the `down`
+command permanently deletes that local database and requires a fresh restore.
+The local services do not restart automatically when Docker Desktop starts.
+
 ## Caddy
 
 For the existing path-based deployment, place the following in the Lemmy site
