@@ -819,7 +819,7 @@ FROM post_like pl
 JOIN person voter ON voter.id = pl.person_id
 WHERE pl.post_id = %s
   AND voter.deleted = false
-ORDER BY pl.score DESC, lower(voter.name)
+ORDER BY pl.score DESC, lower(voter.name), voter.id
 LIMIT %s OFFSET %s
 """
 
@@ -837,7 +837,7 @@ FROM comment_like cl
 JOIN person voter ON voter.id = cl.person_id
 WHERE cl.comment_id = %s
   AND voter.deleted = false
-ORDER BY cl.score DESC, lower(voter.name)
+ORDER BY cl.score DESC, lower(voter.name), voter.id
 LIMIT %s OFFSET %s
 """
 
