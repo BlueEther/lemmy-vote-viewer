@@ -14,7 +14,7 @@
 
   <header>
     <h1>{{ domain }}</h1>
-    <p class="muted">Users from this instance that are known to {{ lemmy_instance or 'the local Lemmy instance' }}. Vote totals include current votes on public, active communities only.</p>
+    <p class="muted">Users from this instance that are known to {{ lemmy_instance or 'the local Lemmy instance' }}. Totals cover votes recorded locally within the last {{ vote_window_days }} days and may include communities not otherwise visible in this viewer.</p>
   </header>
 
   <section class="summary">
@@ -23,8 +23,8 @@
     </div>
     <div class="stats">
       <span><b>{{ summary.known_users }}</b> known users</span>
-      <span><b>{{ summary.voting_users }}</b> with visible votes</span>
-      <span><b>{{ summary.total }}</b> current votes</span>
+      <span><b>{{ summary.voting_users }}</b> recent voters</span>
+      <span><b>{{ summary.total }}</b> recorded votes</span>
       <span class="up"><b>{{ summary.up }}</b> ↑</span>
       <span class="down"><b>{{ summary.down }}</b> ↓</span>
       {% if summary.neutral %}<span class="neutral"><b>{{ summary.neutral }}</b> •</span>{% endif %}
@@ -45,7 +45,7 @@
     </nav>
 
     {% if sort == 'down_ratio' %}
-      <p class="muted">Downvote percentage sorting requires at least 10 visible votes; lower-activity users follow.</p>
+      <p class="muted">Downvote percentage sorting requires at least 10 votes within the last {{ vote_window_days }} days; lower-activity users follow.</p>
     {% endif %}
 
     <div class="instance-table-wrap">
@@ -57,8 +57,8 @@
             <th scope="col" class="numeric">Up</th>
             <th scope="col" class="numeric">Down</th>
             <th scope="col" class="numeric">Down %</th>
-            <th scope="col">Latest vote</th>
-            <th scope="col"><span class="muted">History</span></th>
+            <th scope="col">Latest recorded vote</th>
+            <th scope="col"><span class="muted">Public history</span></th>
           </tr>
         </thead>
         <tbody>
@@ -83,12 +83,12 @@
     {% if pagination.page_count > 1 %}
       <nav class="pagination" aria-label="Pagination">
         {% if pagination.has_prev %}<a class="filter-button" href="{{ pagination.prev_url }}">← Previous</a>{% else %}<span></span>{% endif %}
-        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} users with visible votes</span>
+        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} recent voters</span>
         {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
       </nav>
     {% endif %}
   {% else %}
-    <p class="notice">No current votes from known users on this instance were found in public, active communities.</p>
+    <p class="notice">No votes from known users on this instance were recorded within the last {{ vote_window_days }} days.</p>
   {% endif %}
 
   {% include "_footer.html" %}

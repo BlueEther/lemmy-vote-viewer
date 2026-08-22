@@ -20,8 +20,9 @@ comment votes, and inspect the voters recorded for individual items.
 - remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
 - username and partial-instance suggestions after an unsuccessful search
 - post and comment lookup by local path or ActivityPub URL
-- optional instance-level summaries and sortable per-user vote totals
-- public communities only
+- optional instance-level summaries and sortable per-user totals for votes
+  recorded locally within the last 30 days
+- public communities only in user histories and item voter lists
 - removed/deleted post and comment text is redacted
 - deleted users are excluded from voter lists/search
 - title/comment links go to the local Lemmy copy
@@ -52,6 +53,12 @@ Instance-level search can reveal aggregate behaviour that may not otherwise be
 easy to discover. It is disabled by default. Enabling it should be an informed
 deployment decision and does not replace authentication or proxy access
 controls.
+
+Instance-level totals aggregate the locally stored `post_like` and
+`comment_like` records from the last 30 days. They may include votes associated
+with communities that are not otherwise visible in this viewer. The linked
+per-user histories remain restricted to public, active communities, so their
+counts may differ from the instance overview.
 
 ## Roadmap
 
@@ -309,6 +316,7 @@ docker exec lemmy-easy-deploy-proxy-1 \
 This viewer shows the current vote state stored by this Lemmy instance. 
 It is not a permanent audit log of removed or changed votes. 
 Remote-user data is limited to what has already federated to and is stored by this instance.
+Instance-level totals are limited to votes recorded during the last 30 days.
 
 
 ## LLM declaration

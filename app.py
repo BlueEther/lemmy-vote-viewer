@@ -56,6 +56,7 @@ try:
 except ValueError:
     INSTANCE_QUERY_TIMEOUT_SECONDS = 12
 INSTANCE_QUERY_TIMEOUT_SECONDS = max(5, min(INSTANCE_QUERY_TIMEOUT_SECONDS, 12))
+INSTANCE_VOTE_WINDOW_DAYS = 30
 
 TIMEZONE_NAME = os.environ.get("TIMEZONE", "UTC").strip() or "UTC"
 try:
@@ -607,69 +608,67 @@ LIMIT 1
 
 
 INSTANCE_OVERVIEW_SQL = """
-WITH instance_users AS (
-    SELECT id, name, display_name, local, actor_id
-    FROM person
-    WHERE instance_id = %s
-      AND deleted = false
+WITH target_instance AS MATERIALIZED (
+    SELECT %s::integer AS id
 ),
-votes AS (
+source_votes AS (
     SELECT pl.person_id, pl.score, pl.published AS voted_at
-    FROM instance_users iu
-    JOIN post_like pl ON pl.person_id = iu.id
-    JOIN post p ON p.id = pl.post_id
-    JOIN community c ON c.id = p.community_id
-    WHERE c.visibility = 'Public'
-      AND c.deleted = false
-      AND c.removed = false
+    FROM post_like pl
+    JOIN person pe ON pe.id = pl.person_id
+    WHERE pe.instance_id = (SELECT id FROM target_instance)
+      AND pe.deleted = false
+      AND pl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
 
     UNION ALL
 
     SELECT cl.person_id, cl.score, cl.published AS voted_at
-    FROM instance_users iu
-    JOIN comment_like cl ON cl.person_id = iu.id
-    JOIN post p ON p.id = cl.post_id
-    JOIN community c ON c.id = p.community_id
-    WHERE c.visibility = 'Public'
-      AND c.deleted = false
-      AND c.removed = false
+    FROM comment_like cl
+    JOIN person pe ON pe.id = cl.person_id
+    WHERE pe.instance_id = (SELECT id FROM target_instance)
+      AND pe.deleted = false
+      AND cl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
 ),
-vote_totals AS (
+vote_totals AS MATERIALIZED (
     SELECT
         person_id,
-        COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE score > 0) AS up,
-        COUNT(*) FILTER (WHERE score < 0) AS down,
-        COUNT(*) FILTER (WHERE score = 0) AS neutral,
+        COUNT(*)::bigint AS total,
+        COUNT(*) FILTER (WHERE score > 0)::bigint AS up,
+        COUNT(*) FILTER (WHERE score < 0)::bigint AS down,
+        COUNT(*) FILTER (WHERE score = 0)::bigint AS neutral,
         MAX(voted_at) AS latest_vote
-    FROM votes
+    FROM source_votes
     GROUP BY person_id
 ),
 summary AS (
     SELECT
-        (SELECT COUNT(*) FROM instance_users) AS known_users,
+        (
+            SELECT COUNT(*)
+            FROM person pe
+            WHERE pe.instance_id = (SELECT id FROM target_instance)
+              AND pe.deleted = false
+        ) AS known_users,
         COUNT(*) AS voting_users,
-        COALESCE(SUM(total), 0) AS total,
-        COALESCE(SUM(up), 0) AS up,
-        COALESCE(SUM(down), 0) AS down,
-        COALESCE(SUM(neutral), 0) AS neutral
+        COALESCE(SUM(total), 0)::bigint AS total,
+        COALESCE(SUM(up), 0)::bigint AS up,
+        COALESCE(SUM(down), 0)::bigint AS down,
+        COALESCE(SUM(neutral), 0)::bigint AS neutral
     FROM vote_totals
 ),
 ranked_users AS (
     SELECT
-        iu.id,
-        iu.name,
-        iu.display_name,
-        iu.local,
-        iu.actor_id,
+        pe.id,
+        pe.name,
+        pe.display_name,
+        pe.local,
+        pe.actor_id,
         vt.total,
         vt.up,
         vt.down,
         vt.neutral,
         vt.latest_vote,
         ROW_NUMBER() OVER (ORDER BY {order_by}) AS sort_position
-    FROM instance_users iu
-    JOIN vote_totals vt ON vt.person_id = iu.id
+    FROM vote_totals vt
+    JOIN person pe ON pe.id = vt.person_id
 ),
 paged_users AS (
     SELECT *
@@ -702,16 +701,16 @@ ORDER BY pu.sort_position
 
 
 INSTANCE_SORTS = {
-    "total": "vt.total DESC, lower(iu.name), iu.id",
-    "down": "vt.down DESC, vt.total DESC, lower(iu.name), iu.id",
+    "total": "vt.total DESC, lower(pe.name), pe.id",
+    "down": "vt.down DESC, vt.total DESC, lower(pe.name), pe.id",
     "down_ratio": (
         "CASE WHEN vt.total >= 10 "
         "THEN vt.down::numeric / vt.total ELSE -1 END DESC, "
-        "vt.total DESC, lower(iu.name), iu.id"
+        "vt.total DESC, lower(pe.name), pe.id"
     ),
-    "up": "vt.up DESC, vt.total DESC, lower(iu.name), iu.id",
-    "recent": "vt.latest_vote DESC, lower(iu.name), iu.id",
-    "username": "lower(iu.name), iu.id",
+    "up": "vt.up DESC, vt.total DESC, lower(pe.name), pe.id",
+    "recent": "vt.latest_vote DESC, lower(pe.name), pe.id",
+    "username": "lower(pe.name), pe.id",
 }
 
 
@@ -1039,10 +1038,18 @@ def instance_overview(domain):
 
             requested_offset = (requested_page - 1) * PAGE_SIZE
             overview_sql = INSTANCE_OVERVIEW_SQL.format(
-                order_by=INSTANCE_SORTS[sort]
+                order_by=INSTANCE_SORTS[sort],
+                vote_window_days=INSTANCE_VOTE_WINDOW_DAYS,
             )
             cur.execute(
-                "SELECT set_config('statement_timeout', %s, true)",
+                """
+                SELECT
+                    set_config('statement_timeout', %s, true),
+                    set_config('work_mem', '64MB', true),
+                    set_config('max_parallel_workers_per_gather', '2', true),
+                    set_config('enable_nestloop', 'off', true),
+                    set_config('enable_sort', 'off', true)
+                """,
                 (f"{INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
             )
             cur.execute(
@@ -1096,6 +1103,7 @@ def instance_overview(domain):
         sort=sort,
         sort_urls=sort_urls,
         pagination=pagination,
+        vote_window_days=INSTANCE_VOTE_WINDOW_DAYS,
     )
 
 
