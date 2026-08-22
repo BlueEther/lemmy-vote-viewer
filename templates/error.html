@@ -14,6 +14,9 @@
     <div class="error-code">ERROR {{ status_code }}</div>
     <h1>Something went wrong</h1>
     <p>{{ message }}</p>
+    {% if status_code == 401 and lemmy_login_url %}
+      <a class="filter-button" href="{{ lemmy_login_url }}">Log in to Lemmy</a>
+    {% endif %}
     <a class="filter-button" href="{{ app_prefix }}/">Return to Vote Viewer</a>
   </section>
 

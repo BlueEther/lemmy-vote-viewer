@@ -1,4 +1,7 @@
 <footer class="site-footer">
+  {% if auth_user %}
+    <span>Signed in as {{ auth_user.username }}{% if auth_user.admin %} (admin){% endif %}</span>
+  {% endif %}
   <span>Lemmy Vote Viewer v{{ app_version }} <a href="https://github.com/BlueEther/lemmy-vote-viewer">Code on Github</a></span>
   <span>&copy; 2026 <a href="https://no.lastname.nz/u/BlueEther">BlueEther</a></span>
   {% if lemmy_instance %}

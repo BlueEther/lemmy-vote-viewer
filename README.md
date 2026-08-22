@@ -44,12 +44,14 @@ comment votes, and inspect the voters recorded for individual items.
 - Hardened non-root Docker container with a read-only filesystem
 - Application version and configured Lemmy instance shown in the footer
 - Friendly error pages without internal details
+- Optional authorization using the existing local Lemmy login
 
 ## Security note
 
-This viewer exposes voting data publicly by default. Operators should decide
-whether public access is appropriate for their deployment and configure access
-controls if needed.
+This viewer exposes voting data publicly by default. It can reuse the local
+Lemmy login to restrict ordinary searches, instance overviews, or both.
+Operators should decide whether public access is appropriate for their
+deployment and configure access controls if needed.
 
 Similar voting data is already publicly available through services such as
 [Lemvotes](https://lemvotes.org).
@@ -82,7 +84,6 @@ instance overview.
 
 ### Possible enhancements
 
-- Add optional authentication.
 - Add configurable date formatting.
 - Add date-range filtering.
 - Add a health-check endpoint.
@@ -146,6 +147,14 @@ INSTANCE_QUERY_TIMEOUT_SECONDS=12
 INSTANCE_VOTE_WINDOW_DAYS=30
 LEMMY_NETWORK=lemmy-easy-deploy_default
 LEMMY_BASE_URL=https://example.com
+LEMMY_INTERNAL_URL=http://lemmy:8536
+AUTH_PROVIDER=none
+AUTH_SEARCH_REQUIRE=none
+AUTH_INSTANCE_REQUIRE=none
+AUTH_ALLOWED_USERS=Dave,BlueEther
+AUTH_COOKIE_NAME=jwt
+AUTH_CACHE_SECONDS=60
+AUTH_TIMEOUT_SECONDS=3
 TIMEZONE=Pacific/Auckland
 ```
 
@@ -172,8 +181,57 @@ cp .env.example .env
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
 - `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
   It is used to identify and link to the instance in the viewer UI.
+- `LEMMY_INTERNAL_URL` is the URL the viewer uses to validate Lemmy sessions.
+  Prefer the internal Lemmy backend URL, such as `http://lemmy:8536`, rather
+  than routing authentication requests back through the public proxy.
 - `TIMEZONE` controls the timezone used for displayed vote timestamps. Use an
   IANA timezone name such as `Pacific/Auckland`; it defaults to `UTC`.
+
+### Lemmy authentication
+
+The viewer can reuse the `jwt` cookie created when a user logs into Lemmy on
+the same hostname. It validates that token server-side with Lemmy's v3 API; it
+does not handle passwords or share Lemmy's JWT signing secret.
+
+To require a Lemmy login for ordinary searches and an administrator account
+for instance overviews, use:
+
+```text
+AUTH_PROVIDER=lemmy
+AUTH_SEARCH_REQUIRE=login
+AUTH_INSTANCE_REQUIRE=admin
+AUTH_ALLOWED_USERS=Dave,BlueEther
+LEMMY_INTERNAL_URL=http://lemmy:8536
+```
+
+Both requirement settings accept:
+
+- `none` — public access.
+- `login` — any authenticated, active local Lemmy user.
+- `allowlist` — a Lemmy administrator or a username listed in
+  `AUTH_ALLOWED_USERS`.
+- `admin` — Lemmy administrators only.
+
+`AUTH_ALLOWED_USERS` is a comma-separated list of local usernames. Comparison
+is case-insensitive and surrounding whitespace is ignored. The list is only
+used when a requirement is set to `allowlist`; it does not override `admin`.
+
+`AUTH_COOKIE_NAME` defaults to Lemmy's `jwt` cookie. Successful and failed
+token validations are cached for `AUTH_CACHE_SECONDS`, constrained to 0–300
+seconds and defaulting to 60. `AUTH_TIMEOUT_SECONDS` controls the Lemmy API
+request and is constrained to 1–10 seconds, defaulting to 3. Authentication
+requests do not follow redirects, preventing the bearer token from being
+forwarded if the internal URL is misconfigured.
+
+Authentication currently targets Lemmy 0.19's `GET /api/v3/site` endpoint.
+The browser and viewer must be served from the same hostname for Lemmy's
+host-scoped login cookie to be sent to the viewer. Caddy forwards cookies with
+the existing configuration below. Tokens and cookie headers must never be
+included in application or proxy logs.
+
+When `ENABLE_DOMAIN_SEARCH=true`, the instance-search UI is shown only to a
+user who satisfies `AUTH_INSTANCE_REQUIRE`. Direct instance URLs enforce the
+same rule server-side.
 
 ### Passwords with URL-special characters
 
@@ -243,13 +301,13 @@ immediately before `reverse_proxy http://lemmy-ui:1234`:
 
 	##########  Bot block ends  ##########
 	######################################
-	
+
 	redir /votes /votes/ 308
-	
+
 	handle_path /votes/* {
 		reverse_proxy lemmy-vote-viewer:8080
 	}
-	
+
 	reverse_proxy http://lemmy-ui:1234
 ```
 
@@ -294,8 +352,8 @@ docker exec lemmy-easy-deploy-proxy-1 \
 
 ## Data semantics
 
-This viewer shows the current vote state stored by this Lemmy instance. 
-It is not a permanent audit log of removed or changed votes. 
+This viewer shows the current vote state stored by this Lemmy instance.
+It is not a permanent audit log of removed or changed votes.
 Remote-user data is limited to what has already federated to and is stored by this instance.
 Instance-level totals are limited to the configured recent-vote window, which
 defaults to 30 days.
@@ -387,7 +445,7 @@ manually edited to tidy them and add elements.
 
 Security was then checked with Codex and GitHub Copilot.
 
-Codex was uesed to refactor the SQL and gain significent speedup. It was also used for 
+Codex was uesed to refactor the SQL and gain significent speedup. It was also used for
 extending out the domain and user searching
 
 ## License
