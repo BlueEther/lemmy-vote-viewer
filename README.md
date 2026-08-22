@@ -19,6 +19,8 @@ comment votes, and inspect the voters recorded for individual items.
 - local users: `BlueEther`
 - remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
 - username and partial-instance suggestions after an unsuccessful search
+- locally recorded upvote/downvote totals and per-item received-vote history
+  for each searched user
 - post and comment lookup by local path or ActivityPub URL
 - optional instance-level summaries and sortable per-user totals for recently
   recorded local votes (30 days by default)
@@ -48,6 +50,10 @@ controls if needed.
 
 Similar voting data is already publicly available through services such as
 [Lemvotes](https://lemvotes.org).
+
+Received-vote totals come from the local Lemmy database's post and comment
+aggregates. They do not include votes that were never federated to the local
+instance.
 
 Instance-level search can reveal aggregate behaviour that may not otherwise be
 easy to discover. It is disabled by default. Enabling it should be an informed
@@ -160,6 +166,9 @@ Exit `psql`, then run the grant SQL file:
 ```bash
 docker exec -i lemmy-easy-deploy-postgres-1   psql -U lemmy -d lemmy < db-grants.sql
 ```
+
+Re-run `db-grants.sql` after upgrading the viewer. New releases may require
+read-only access to additional Lemmy columns or aggregate tables.
 
 
 ## Run Docker
