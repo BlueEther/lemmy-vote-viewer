@@ -13,7 +13,7 @@ os.environ["LEMMY_INTERNAL_URL"] = "http://lemmy:8536"
 os.environ["AUTH_PROVIDER"] = "lemmy"
 os.environ["AUTH_SEARCH_REQUIRE"] = "login"
 os.environ["AUTH_INSTANCE_REQUIRE"] = "admin"
-os.environ["AUTH_ALLOWED_USERS"] = "BlueEther"
+os.environ["AUTH_ALLOWED_USERS"] = "Dave,BlueEther"
 os.environ["AUTH_CACHE_SECONDS"] = "60"
 os.environ["ENABLE_DOMAIN_SEARCH"] = "true"
 
