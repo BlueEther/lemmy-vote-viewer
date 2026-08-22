@@ -260,10 +260,12 @@ TO vote_viewer;
 \echo 'Granting SELECT access to required columns on [post_aggregates]...'
 
 GRANT SELECT (
+    post_id,
     creator_id,
     community_id,
     upvotes,
-    downvotes
+    downvotes,
+    published
 )
 ON public.post_aggregates
 TO vote_viewer;
@@ -275,7 +277,8 @@ TO vote_viewer;
 GRANT SELECT (
     comment_id,
     upvotes,
-    downvotes
+    downvotes,
+    published
 )
 ON public.comment_aggregates
 TO vote_viewer;

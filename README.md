@@ -19,7 +19,8 @@ comment votes, and inspect the voters recorded for individual items.
 - local users: `BlueEther`
 - remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
 - username and partial-instance suggestions after an unsuccessful search
-- locally recorded upvote/downvote totals received by each searched user
+- locally recorded upvote/downvote totals and per-item received-vote history
+  for each searched user
 - post and comment lookup by local path or ActivityPub URL
 - optional instance-level summaries and sortable per-user totals for recently
   recorded local votes (30 days by default)

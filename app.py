@@ -302,8 +302,19 @@ def make_pagination(total, requested_page):
     }
 
 
-def build_index_url(username, content_type="all", score_filter=None, page=1):
+def build_index_url(
+    username,
+    content_type="all",
+    score_filter=None,
+    page=1,
+    history_view="cast",
+    received_sort="date",
+):
     params = {"user": username}
+    if history_view == "received":
+        params["view"] = "received"
+        if received_sort != "date":
+            params["sort"] = received_sort
     if content_type != "all":
         params["type"] = content_type
     if score_filter is not None:
@@ -634,7 +645,10 @@ WITH received_by_type AS (
     SELECT
         'post'::text AS type,
         COALESCE(SUM(pa.upvotes), 0)::bigint AS up,
-        COALESCE(SUM(pa.downvotes), 0)::bigint AS down
+        COALESCE(SUM(pa.downvotes), 0)::bigint AS down,
+        COUNT(*) FILTER (
+            WHERE pa.upvotes + pa.downvotes > 0
+        )::bigint AS items
     FROM post_aggregates pa
     JOIN community c ON c.id = pa.community_id
     WHERE pa.creator_id = %s
@@ -647,7 +661,10 @@ WITH received_by_type AS (
     SELECT
         'comment'::text AS type,
         COALESCE(SUM(ca.upvotes), 0)::bigint AS up,
-        COALESCE(SUM(ca.downvotes), 0)::bigint AS down
+        COALESCE(SUM(ca.downvotes), 0)::bigint AS down,
+        COUNT(*) FILTER (
+            WHERE ca.upvotes + ca.downvotes > 0
+        )::bigint AS items
     FROM comment cm
     JOIN comment_aggregates ca ON ca.comment_id = cm.id
     JOIN post p ON p.id = cm.post_id
@@ -663,8 +680,107 @@ SELECT
     COALESCE(SUM(down), 0)::bigint AS down,
     0::bigint AS neutral,
     COALESCE(SUM(up + down) FILTER (WHERE type = 'post'), 0)::bigint AS posts,
-    COALESCE(SUM(up + down) FILTER (WHERE type = 'comment'), 0)::bigint AS comments
+    COALESCE(SUM(up + down) FILTER (WHERE type = 'comment'), 0)::bigint AS comments,
+    COALESCE(SUM(items), 0)::bigint AS items,
+    COALESCE(SUM(items) FILTER (WHERE type = 'post'), 0)::bigint AS post_items,
+    COALESCE(SUM(items) FILTER (WHERE type = 'comment'), 0)::bigint AS comment_items
 FROM received_by_type
+"""
+
+
+USER_RECEIVED_ITEMS_SQL = """
+WITH filters AS (
+    SELECT %s::text AS content_type, %s::text AS received_sort
+),
+eligible_items AS MATERIALIZED (
+    SELECT
+        pa.published AS published_at,
+        'post'::text AS type,
+        pa.upvotes,
+        pa.downvotes,
+        pa.post_id,
+        NULL::integer AS comment_id,
+        CASE f.received_sort
+            WHEN 'top' THEN pa.upvotes - pa.downvotes
+            WHEN 'bottom' THEN pa.downvotes - pa.upvotes
+            ELSE EXTRACT(EPOCH FROM pa.published)
+        END AS sort_value
+    FROM post_aggregates pa
+    JOIN community c ON c.id = pa.community_id
+    CROSS JOIN filters f
+    WHERE pa.creator_id = %s
+      AND (f.content_type = 'all' OR f.content_type = 'post')
+      AND pa.upvotes + pa.downvotes > 0
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+
+    UNION ALL
+
+    SELECT
+        ca.published AS published_at,
+        'comment'::text AS type,
+        ca.upvotes,
+        ca.downvotes,
+        cm.post_id,
+        ca.comment_id,
+        CASE f.received_sort
+            WHEN 'top' THEN ca.upvotes - ca.downvotes
+            WHEN 'bottom' THEN ca.downvotes - ca.upvotes
+            ELSE EXTRACT(EPOCH FROM ca.published)
+        END AS sort_value
+    FROM comment cm
+    JOIN comment_aggregates ca ON ca.comment_id = cm.id
+    JOIN post p ON p.id = cm.post_id
+    JOIN community c ON c.id = p.community_id
+    CROSS JOIN filters f
+    WHERE cm.creator_id = %s
+      AND (f.content_type = 'all' OR f.content_type = 'comment')
+      AND ca.upvotes + ca.downvotes > 0
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+),
+paged_items AS MATERIALIZED (
+    SELECT *
+    FROM eligible_items
+    ORDER BY sort_value DESC, published_at DESC, type, post_id, comment_id
+    LIMIT %s OFFSET %s
+)
+SELECT
+    pi.published_at,
+    pi.type,
+    (pi.upvotes + pi.downvotes)::bigint AS total,
+    pi.upvotes,
+    pi.downvotes,
+    pi.post_id,
+    pi.comment_id,
+    CASE WHEN p.deleted THEN '[deleted post]'
+         WHEN p.removed THEN '[removed post]'
+         ELSE p.name END AS post_title,
+    CASE WHEN pi.type = 'post' THEN NULL
+         WHEN p.deleted OR p.removed THEN '[comment on unavailable post]'
+         WHEN cm.deleted THEN '[deleted comment]'
+         WHEN cm.removed THEN '[removed comment]'
+         ELSE cm.content END AS comment_content,
+    c.name AS community_name,
+    c.title AS community_title,
+    c.local AS community_local,
+    c.actor_id AS community_url,
+    CASE WHEN pi.type = 'post' THEN p.ap_id ELSE cm.ap_id END AS content_url,
+    CASE WHEN pi.type = 'post' THEN p.local ELSE cm.local END AS item_local,
+    (
+        p.deleted OR p.removed
+        OR (pi.type = 'comment' AND (cm.deleted OR cm.removed))
+    ) AS content_hidden,
+    (p.deleted OR p.removed) AS post_hidden
+FROM paged_items pi
+JOIN post p ON p.id = pi.post_id
+JOIN community c ON c.id = p.community_id
+LEFT JOIN comment cm
+    ON pi.type = 'comment'
+   AND cm.id = pi.comment_id
+ORDER BY pi.sort_value DESC, pi.published_at DESC, pi.type, pi.post_id, pi.comment_id
 """
 
 
@@ -1026,17 +1142,30 @@ def index():
     if content_type not in ("all", "post", "comment"):
         content_type = "all"
 
+    history_view = request.args.get("view", "cast")
+    if history_view not in ("cast", "received"):
+        history_view = "cast"
+
+    received_sort = request.args.get("sort", "date")
+    if received_sort not in ("date", "top", "bottom"):
+        received_sort = "date"
+
     raw_score = request.args.get("score", "all")
     score_filter = 1 if raw_score == "1" else -1 if raw_score == "-1" else 0 if raw_score == "0" else None
+    if history_view == "received":
+        score_filter = None
     requested_page = parse_page()
 
     rows = []
     summary = None
     received_summary = None
+    received_items_summary = None
     user = None
     pagination = None
     type_urls = {}
     score_urls = {}
+    view_urls = {}
+    sort_urls = {}
     user_suggestions = []
 
     if username:
@@ -1050,7 +1179,6 @@ def index():
                         (user["id"], user["id"], content_type, content_type, score_filter, score_filter),
                     )
                     summary = cur.fetchone()
-                    pagination = make_pagination(summary["filtered_total"], requested_page)
 
                     cur.execute(
                         USER_RECEIVED_SUMMARY_SQL,
@@ -1058,20 +1186,55 @@ def index():
                     )
                     received_summary = cur.fetchone()
 
-                    cur.execute(
-                        USER_VOTES_SQL,
-                        (
-                            content_type, score_filter,
-                            user["id"], user["id"],
-                            PAGE_SIZE, pagination["offset"],
-                        ),
-                    )
-                    rows = [enrich_user_vote(row) for row in cur.fetchall()]
+                    if history_view == "cast":
+                        pagination = make_pagination(
+                            summary["filtered_total"], requested_page
+                        )
+                        cur.execute(
+                            USER_VOTES_SQL,
+                            (
+                                content_type, score_filter,
+                                user["id"], user["id"],
+                                PAGE_SIZE, pagination["offset"],
+                            ),
+                        )
+                        rows = [enrich_user_vote(row) for row in cur.fetchall()]
+                    else:
+                        item_count_key = {
+                            "all": "items",
+                            "post": "post_items",
+                            "comment": "comment_items",
+                        }[content_type]
+                        received_items_summary = {
+                            "total": received_summary["items"],
+                            "filtered_total": received_summary[item_count_key],
+                        }
+                        pagination = make_pagination(
+                            received_items_summary["filtered_total"], requested_page
+                        )
+                        cur.execute(
+                            USER_RECEIVED_ITEMS_SQL,
+                            (
+                                content_type, received_sort,
+                                user["id"], user["id"],
+                                PAGE_SIZE, pagination["offset"],
+                            ),
+                        )
+                        rows = [enrich_item(row) for row in cur.fetchall()]
 
                     type_urls = {
-                        "all": build_index_url(canonical_username, "all", score_filter),
-                        "post": build_index_url(canonical_username, "post", score_filter),
-                        "comment": build_index_url(canonical_username, "comment", score_filter),
+                        "all": build_index_url(
+                            canonical_username, "all", score_filter, 1, history_view,
+                            received_sort,
+                        ),
+                        "post": build_index_url(
+                            canonical_username, "post", score_filter, 1, history_view,
+                            received_sort,
+                        ),
+                        "comment": build_index_url(
+                            canonical_username, "comment", score_filter, 1, history_view,
+                            received_sort,
+                        ),
                     }
                     score_urls = {
                         "all": build_index_url(canonical_username, content_type, None),
@@ -1079,13 +1242,39 @@ def index():
                         "-1": build_index_url(canonical_username, content_type, -1),
                         "0": build_index_url(canonical_username, content_type, 0),
                     }
+                    view_urls = {
+                        "cast": build_index_url(
+                            canonical_username, content_type, score_filter
+                        ),
+                        "received": build_index_url(
+                            canonical_username, content_type, None, 1, "received",
+                            received_sort,
+                        ),
+                    }
+                    sort_urls = {
+                        sort_name: build_index_url(
+                            canonical_username, content_type, None, 1, "received",
+                            sort_name,
+                        )
+                        for sort_name in ("date", "top", "bottom")
+                    }
                     if pagination["has_prev"]:
                         pagination["prev_url"] = build_index_url(
-                            canonical_username, content_type, score_filter, pagination["prev_page"]
+                            canonical_username,
+                            content_type,
+                            score_filter,
+                            pagination["prev_page"],
+                            history_view,
+                            received_sort,
                         )
                     if pagination["has_next"]:
                         pagination["next_url"] = build_index_url(
-                            canonical_username, content_type, score_filter, pagination["next_page"]
+                            canonical_username,
+                            content_type,
+                            score_filter,
+                            pagination["next_page"],
+                            history_view,
+                            received_sort,
                         )
                 else:
                     user_suggestions = find_user_suggestions(cur, username)
@@ -1102,11 +1291,16 @@ def index():
         rows=rows,
         summary=summary,
         received_summary=received_summary,
+        received_items_summary=received_items_summary,
         pagination=pagination,
+        history_view=history_view,
+        received_sort=received_sort,
         content_type=content_type,
         score_filter=score_filter,
         type_urls=type_urls,
         score_urls=score_urls,
+        view_urls=view_urls,
+        sort_urls=sort_urls,
     )
 
 
