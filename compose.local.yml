@@ -1,0 +1,58 @@
+# Copyright (C) 2026 BlueEther@no.lastname.nz
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: lemmy-vote-viewer-local
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in .env.local}
+
+    environment:
+      POSTGRES_DB: lemmy
+      POSTGRES_USER: lemmy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.local}
+      VOTE_VIEWER_PASSWORD: ${VOTE_VIEWER_PASSWORD:?Set VOTE_VIEWER_PASSWORD in .env.local}
+
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-vote-viewer.sh:/docker-entrypoint-initdb.d/10-vote-viewer.sh:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lemmy -d lemmy"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  vote-viewer:
+    build: .
+    image: lemmy-vote-viewer-local
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.local}
+      APP_PREFIX: ${APP_PREFIX:-/}
+      PAGE_SIZE: ${PAGE_SIZE:-100}
+      LEMMY_BASE_URL: ${LEMMY_BASE_URL:-https://example.com}
+      TIMEZONE: ${TIMEZONE:-UTC}
+
+    ports:
+      - "127.0.0.1:${VIEWER_PORT:-8080}:8080"
+
+    read_only: true
+
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    pids_limit: 128
+
+volumes:
+  postgres-data:
