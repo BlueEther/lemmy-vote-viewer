@@ -38,6 +38,7 @@ ERROR_MESSAGES = {
     400: "The request could not be understood.",
     404: "The requested page or item was not found.",
     500: "The viewer encountered an unexpected error.",
+    503: "The database query took too long. Please try again later.",
 }
 
 _raw_prefix = os.environ.get("APP_PREFIX", "/votes").strip()
@@ -112,6 +113,20 @@ def inject_app_config():
 @app.errorhandler(500)
 def handle_error(error):
     status_code = getattr(error, "code", 500)
+    return render_error(status_code)
+
+
+@app.errorhandler(psycopg.errors.QueryCanceled)
+def handle_query_timeout(error):
+    app.logger.warning(
+        "Database query timed out for %s %s",
+        request.method,
+        request.path,
+    )
+    return render_error(503)
+
+
+def render_error(status_code):
     return (
         render_template(
             "error.html",
