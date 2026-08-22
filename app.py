@@ -1,19 +1,32 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import hashlib
+import json
 import math
 import os
 import re
+import threading
+import time
 from datetime import timezone
+from functools import wraps
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from flask import Flask, abort, redirect, render_template, request
+from flask import Flask, abort, g, redirect, render_template, request
 import psycopg
 from psycopg.rows import dict_row
 
 app = Flask(__name__)
+
+
+class AuthenticationUnavailable(Exception):
+    pass
+
+
 APP_VERSION = Path(__file__).with_name("VERSION").read_text(encoding="utf-8").strip()
 if not APP_VERSION:
     raise RuntimeError("VERSION file is empty")
@@ -36,6 +49,8 @@ ENABLE_DOMAIN_SEARCH = boolean_env("ENABLE_DOMAIN_SEARCH", False)
 
 ERROR_MESSAGES = {
     400: "The request could not be understood.",
+    401: "Log in to the local Lemmy instance to use this viewer.",
+    403: "Your Lemmy account does not have permission to view this page.",
     404: "The requested page or item was not found.",
     500: "The viewer encountered an unexpected error.",
     503: "The database query took too long. Please try again later.",
@@ -99,16 +114,27 @@ def security_headers(response):
 
 @app.context_processor
 def inject_app_config():
+    try:
+        auth_user = authenticated_user()
+    except AuthenticationUnavailable:
+        auth_user = None
     return {
         "app_prefix": APP_PREFIX,
         "app_version": APP_VERSION,
         "lemmy_base_url": LEMMY_BASE_URL,
         "lemmy_instance": LEMMY_INSTANCE,
-        "domain_search_enabled": ENABLE_DOMAIN_SEARCH,
+        "lemmy_login_url": LEMMY_LOGIN_URL,
+        "auth_user": auth_user,
+        "domain_search_enabled": (
+            ENABLE_DOMAIN_SEARCH
+            and access_requirement_met(auth_user, AUTH_INSTANCE_REQUIRE)
+        ),
     }
 
 
 @app.errorhandler(400)
+@app.errorhandler(401)
+@app.errorhandler(403)
 @app.errorhandler(404)
 @app.errorhandler(500)
 def handle_error(error):
@@ -126,12 +152,26 @@ def handle_query_timeout(error):
     return render_error(503)
 
 
-def render_error(status_code):
+@app.errorhandler(AuthenticationUnavailable)
+def handle_authentication_unavailable(error):
+    g.auth_unavailable = True
+    app.logger.warning(
+        "Lemmy authentication service unavailable for %s %s",
+        request.method,
+        request.path,
+    )
+    return render_error(
+        503,
+        "The Lemmy authentication service is unavailable. Please try again later.",
+    )
+
+
+def render_error(status_code, message=None):
     return (
         render_template(
             "error.html",
             status_code=status_code,
-            message=ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[500]),
+            message=message or ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[500]),
         ),
         status_code,
     )
@@ -189,6 +229,228 @@ def lemmy_instance_config(value):
 LEMMY_BASE_URL, LEMMY_INSTANCE = lemmy_instance_config(
     os.environ.get("LEMMY_BASE_URL", "")
 )
+
+
+AUTH_REQUIREMENTS = {"none", "login", "allowlist", "admin"}
+
+
+def auth_requirement_env(name, default="none"):
+    requirement = os.environ.get(name, default).strip().lower()
+    if requirement not in AUTH_REQUIREMENTS:
+        choices = ", ".join(sorted(AUTH_REQUIREMENTS))
+        raise RuntimeError(f"{name} must be one of: {choices}")
+    return requirement
+
+
+AUTH_PROVIDER = os.environ.get("AUTH_PROVIDER", "none").strip().lower()
+if AUTH_PROVIDER not in ("none", "lemmy"):
+    raise RuntimeError("AUTH_PROVIDER must be either none or lemmy")
+
+AUTH_SEARCH_REQUIRE = auth_requirement_env("AUTH_SEARCH_REQUIRE")
+AUTH_INSTANCE_REQUIRE = auth_requirement_env("AUTH_INSTANCE_REQUIRE")
+if AUTH_PROVIDER == "none" and (
+    AUTH_SEARCH_REQUIRE != "none" or AUTH_INSTANCE_REQUIRE != "none"
+):
+    raise RuntimeError(
+        "AUTH_PROVIDER must be lemmy when an authentication requirement is enabled"
+    )
+
+AUTH_ALLOWED_USERS = frozenset(
+    username.strip().casefold()
+    for username in os.environ.get("AUTH_ALLOWED_USERS", "").split(",")
+    if username.strip()
+)
+AUTH_COOKIE_NAME = os.environ.get("AUTH_COOKIE_NAME", "jwt").strip() or "jwt"
+
+try:
+    AUTH_CACHE_SECONDS = int(os.environ.get("AUTH_CACHE_SECONDS", "60"))
+except ValueError:
+    AUTH_CACHE_SECONDS = 60
+AUTH_CACHE_SECONDS = max(0, min(AUTH_CACHE_SECONDS, 300))
+
+try:
+    AUTH_TIMEOUT_SECONDS = float(os.environ.get("AUTH_TIMEOUT_SECONDS", "3"))
+except ValueError:
+    AUTH_TIMEOUT_SECONDS = 3.0
+AUTH_TIMEOUT_SECONDS = max(1.0, min(AUTH_TIMEOUT_SECONDS, 10.0))
+
+_auth_internal_url = os.environ.get("LEMMY_INTERNAL_URL", "").strip()
+LEMMY_INTERNAL_URL, _ = lemmy_instance_config(
+    _auth_internal_url or LEMMY_BASE_URL or ""
+)
+if AUTH_PROVIDER == "lemmy" and not LEMMY_INTERNAL_URL:
+    raise RuntimeError(
+        "LEMMY_INTERNAL_URL or LEMMY_BASE_URL is required for Lemmy authentication"
+    )
+
+LEMMY_LOGIN_URL = f"{LEMMY_BASE_URL}/login" if LEMMY_BASE_URL else None
+_AUTH_CACHE = {}
+_AUTH_CACHE_LOCK = threading.Lock()
+_AUTH_CACHE_MAX_ENTRIES = 1024
+
+
+class NoAuthRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_AUTH_HTTP_OPENER = build_opener(NoAuthRedirectHandler())
+
+
+def cached_auth_user(cache_key):
+    if AUTH_CACHE_SECONDS == 0:
+        return False, None
+    now = time.monotonic()
+    with _AUTH_CACHE_LOCK:
+        cached = _AUTH_CACHE.get(cache_key)
+        if cached and cached[0] > now:
+            return True, cached[1]
+        if cached:
+            _AUTH_CACHE.pop(cache_key, None)
+    return False, None
+
+
+def cache_auth_user(cache_key, user):
+    if AUTH_CACHE_SECONDS == 0:
+        return
+    now = time.monotonic()
+    with _AUTH_CACHE_LOCK:
+        if len(_AUTH_CACHE) >= _AUTH_CACHE_MAX_ENTRIES:
+            expired_keys = [
+                key for key, (expires_at, _) in _AUTH_CACHE.items()
+                if expires_at <= now
+            ]
+            for key in expired_keys:
+                _AUTH_CACHE.pop(key, None)
+        if len(_AUTH_CACHE) >= _AUTH_CACHE_MAX_ENTRIES:
+            _AUTH_CACHE.pop(next(iter(_AUTH_CACHE)))
+        _AUTH_CACHE[cache_key] = (now + AUTH_CACHE_SECONDS, user)
+
+
+def validate_lemmy_token(token):
+    cache_key = hashlib.sha256(token.encode("utf-8")).digest()
+    cache_hit, user = cached_auth_user(cache_key)
+    if cache_hit:
+        return user
+
+    auth_request = Request(
+        f"{LEMMY_INTERNAL_URL}/api/v3/site",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": f"lemmy-vote-viewer/{APP_VERSION}",
+        },
+    )
+    try:
+        with _AUTH_HTTP_OPENER.open(
+            auth_request, timeout=AUTH_TIMEOUT_SECONDS
+        ) as response:
+            response_body = response.read(1_048_577)
+            if len(response_body) > 1_048_576:
+                raise AuthenticationUnavailable
+            payload = json.loads(response_body)
+    except HTTPError as exc:
+        if exc.code in (400, 401, 403):
+            cache_auth_user(cache_key, None)
+            return None
+        raise AuthenticationUnavailable from exc
+    except (
+        URLError,
+        TimeoutError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        OSError,
+    ) as exc:
+        raise AuthenticationUnavailable from exc
+
+    my_user = payload.get("my_user") if isinstance(payload, dict) else None
+    local_user_view = (
+        my_user.get("local_user_view") if isinstance(my_user, dict) else None
+    )
+    local_user = (
+        local_user_view.get("local_user")
+        if isinstance(local_user_view, dict)
+        else None
+    )
+    person = (
+        local_user_view.get("person")
+        if isinstance(local_user_view, dict)
+        else None
+    )
+    if not isinstance(local_user, dict) or not isinstance(person, dict):
+        cache_auth_user(cache_key, None)
+        return None
+
+    username = person.get("name")
+    if (
+        not isinstance(username, str)
+        or not username
+        or person.get("banned", False)
+        or person.get("deleted", False)
+    ):
+        cache_auth_user(cache_key, None)
+        return None
+
+    user = {
+        "username": username,
+        "admin": bool(local_user.get("admin", False)),
+    }
+    cache_auth_user(cache_key, user)
+    return user
+
+
+def authenticated_user():
+    if AUTH_PROVIDER != "lemmy":
+        return None
+    if getattr(g, "auth_unavailable", False):
+        raise AuthenticationUnavailable
+    if hasattr(g, "auth_user"):
+        return g.auth_user
+    token = request.cookies.get(AUTH_COOKIE_NAME, "")
+    if not token or len(token) > 4096 or "\n" in token or "\r" in token:
+        g.auth_user = None
+        return None
+    try:
+        g.auth_user = validate_lemmy_token(token)
+    except AuthenticationUnavailable:
+        g.auth_unavailable = True
+        raise
+    return g.auth_user
+
+
+def access_requirement_met(user, requirement):
+    if requirement == "none":
+        return True
+    if not user:
+        return False
+    if requirement == "login":
+        return True
+    if requirement == "admin":
+        return user["admin"]
+    return user["admin"] or user["username"].casefold() in AUTH_ALLOWED_USERS
+
+
+def enforce_access(requirement):
+    if requirement == "none":
+        return None
+    user = authenticated_user()
+    if not user:
+        abort(401)
+    if not access_requirement_met(user, requirement):
+        abort(403)
+    return user
+
+
+def require_access(requirement):
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            enforce_access(requirement)
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
 
 
 def actor_domain(actor_id):
@@ -1112,6 +1374,7 @@ def resolve_item_search(item_query):
 
 
 @app.route("/")
+@require_access(AUTH_SEARCH_REQUIRE)
 def index():
     username = request.args.get("user", "").strip()
     if len(username) > 512:
@@ -1133,6 +1396,7 @@ def index():
         if len(instance_query) > 255:
             abort(400)
         if instance_query:
+            enforce_access(AUTH_INSTANCE_REQUIRE)
             instance_domain = normalize_instance_domain(instance_query)
             if instance_domain:
                 return redirect(build_instance_url(instance_domain))
@@ -1308,6 +1572,7 @@ def index():
 def instance_overview(domain):
     if not ENABLE_DOMAIN_SEARCH:
         abort(404)
+    enforce_access(AUTH_INSTANCE_REQUIRE)
 
     normalized_domain = normalize_instance_domain(domain)
     if not normalized_domain:
@@ -1434,11 +1699,13 @@ def item_votes(kind, item_id):
 
 
 @app.route("/item/post/<int:item_id>")
+@require_access(AUTH_SEARCH_REQUIRE)
 def post_votes(item_id):
     return item_votes("post", item_id)
 
 
 @app.route("/item/comment/<int:item_id>")
+@require_access(AUTH_SEARCH_REQUIRE)
 def comment_votes(item_id):
     return item_votes("comment", item_id)
 
