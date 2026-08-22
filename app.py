@@ -496,7 +496,7 @@ WITH votes AS (
     JOIN community c ON c.id = p.community_id
     JOIN person author ON author.id = p.creator_id
     WHERE pl.person_id = %s
-      AND c.visibility::text = 'Public'
+      AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
 
@@ -533,7 +533,7 @@ WITH votes AS (
     JOIN community c ON c.id = p.community_id
     JOIN person author ON author.id = cm.creator_id
     WHERE cl.person_id = %s
-      AND c.visibility::text = 'Public'
+      AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
 )
@@ -553,7 +553,7 @@ WITH votes AS (
     JOIN post p ON p.id = pl.post_id
     JOIN community c ON c.id = p.community_id
     WHERE pl.person_id = %s
-      AND c.visibility::text = 'Public'
+      AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
 
@@ -564,7 +564,7 @@ WITH votes AS (
     JOIN post p ON p.id = cl.post_id
     JOIN community c ON c.id = p.community_id
     WHERE cl.person_id = %s
-      AND c.visibility::text = 'Public'
+      AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
 )
@@ -588,7 +588,7 @@ SELECT 'post'::text AS kind, p.id AS item_id
 FROM post p
 JOIN community c ON c.id = p.community_id
 WHERE p.ap_id IN (%s, %s)
-  AND c.visibility::text = 'Public'
+  AND c.visibility = 'Public'
   AND c.deleted = false
   AND c.removed = false
 
@@ -599,7 +599,7 @@ FROM comment cm
 JOIN post p ON p.id = cm.post_id
 JOIN community c ON c.id = p.community_id
 WHERE cm.ap_id IN (%s, %s)
-  AND c.visibility::text = 'Public'
+  AND c.visibility = 'Public'
   AND c.deleted = false
   AND c.removed = false
 LIMIT 1
@@ -738,7 +738,7 @@ SELECT
 FROM post p
 JOIN community c ON c.id = p.community_id
 WHERE p.id = %s
-  AND c.visibility::text = 'Public'
+  AND c.visibility = 'Public'
   AND c.deleted = false
   AND c.removed = false
 LIMIT 1
@@ -768,7 +768,7 @@ FROM comment cm
 JOIN post p ON p.id = cm.post_id
 JOIN community c ON c.id = p.community_id
 WHERE cm.id = %s
-  AND c.visibility::text = 'Public'
+  AND c.visibility = 'Public'
   AND c.deleted = false
   AND c.removed = false
 LIMIT 1
