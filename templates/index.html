@@ -31,14 +31,16 @@
         </form>
       </section>
 
-      <section class="search-panel">
-        <h2>Instance vote overview</h2>
-        <p>Review known voters and their current vote totals.</p>
-        <form method="get" action="{{ app_prefix }}/" class="search">
-          <input name="instance" value="{{ instance_query }}" aria-label="Instance domain" placeholder="instance.example" maxlength="255" autocomplete="off" autocapitalize="none" spellcheck="false" {% if instance_query %}autofocus{% endif %}>
-          <button type="submit">Search</button>
-        </form>
-      </section>
+      {% if domain_search_enabled %}
+        <section class="search-panel">
+          <h2>Instance vote overview</h2>
+          <p>Review known voters and their current vote totals.</p>
+          <form method="get" action="{{ app_prefix }}/" class="search">
+            <input name="instance" value="{{ instance_query }}" aria-label="Instance domain" placeholder="instance.example" maxlength="255" autocomplete="off" autocapitalize="none" spellcheck="false" {% if instance_query %}autofocus{% endif %}>
+            <button type="submit">Search</button>
+          </form>
+        </section>
+      {% endif %}
     </div>
   </header>
 
@@ -67,7 +69,7 @@
     <p class="notice">No known public post or comment found for <strong>{{ item_query }}</strong>. Remote items must already be known to this Lemmy instance.</p>
   {% endif %}
 
-  {% if instance_error == 'invalid' %}
+  {% if domain_search_enabled and instance_error == 'invalid' %}
     <p class="notice">Enter an instance domain such as <strong>lemmy.example</strong>, without a URL path.</p>
   {% endif %}
 

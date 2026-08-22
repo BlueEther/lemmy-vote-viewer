@@ -19,6 +19,21 @@ if not APP_VERSION:
     raise RuntimeError("VERSION file is empty")
 DB_DSN = os.environ["DATABASE_URL"]
 
+
+def boolean_env(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise RuntimeError(f"{name} must be either true or false")
+
+
+ENABLE_DOMAIN_SEARCH = boolean_env("ENABLE_DOMAIN_SEARCH", False)
+
 ERROR_MESSAGES = {
     400: "The request could not be understood.",
     404: "The requested page or item was not found.",
@@ -80,6 +95,7 @@ def inject_app_config():
         "app_version": APP_VERSION,
         "lemmy_base_url": LEMMY_BASE_URL,
         "lemmy_instance": LEMMY_INSTANCE,
+        "domain_search_enabled": ENABLE_DOMAIN_SEARCH,
     }
 
 
@@ -903,15 +919,17 @@ def index():
         if item_result:
             return redirect(build_item_url(*item_result))
 
-    instance_query = request.args.get("instance", "").strip()
-    if len(instance_query) > 255:
-        abort(400)
+    instance_query = ""
     instance_error = None
-    if instance_query:
-        instance_domain = normalize_instance_domain(instance_query)
-        if instance_domain:
-            return redirect(build_instance_url(instance_domain))
-        instance_error = "invalid"
+    if ENABLE_DOMAIN_SEARCH:
+        instance_query = request.args.get("instance", "").strip()
+        if len(instance_query) > 255:
+            abort(400)
+        if instance_query:
+            instance_domain = normalize_instance_domain(instance_query)
+            if instance_domain:
+                return redirect(build_instance_url(instance_domain))
+            instance_error = "invalid"
 
     content_type = request.args.get("type", "all")
     if content_type not in ("all", "post", "comment"):
@@ -996,6 +1014,9 @@ def index():
 
 @app.route("/instance/<domain>")
 def instance_overview(domain):
+    if not ENABLE_DOMAIN_SEARCH:
+        abort(404)
+
     normalized_domain = normalize_instance_domain(domain)
     if not normalized_domain:
         abort(404)

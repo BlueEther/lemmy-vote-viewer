@@ -20,7 +20,7 @@ comment votes, and inspect the voters recorded for individual items.
 - remote users: `Dave@lemmy.nz` and `@Dave@lemmy.nz`
 - username and partial-instance suggestions after an unsuccessful search
 - post and comment lookup by local path or ActivityPub URL
-- instance-level summaries and sortable per-user vote totals
+- optional instance-level summaries and sortable per-user vote totals
 - public communities only
 - removed/deleted post and comment text is redacted
 - deleted users are excluded from voter lists/search
@@ -47,6 +47,11 @@ controls if needed.
 
 Similar voting data is already publicly available through services such as
 [Lemvotes](https://lemvotes.org).
+
+Instance-level search can reveal aggregate behaviour that may not otherwise be
+easy to discover. It is disabled by default. Enabling it should be an informed
+deployment decision and does not replace authentication or proxy access
+controls.
 
 ## Roadmap
 
@@ -80,6 +85,7 @@ A full example is in `.env.example`.
 DATABASE_URL=postgresql://vote_viewer:STRONG_PASSWORD@postgres:5432/lemmy
 APP_PREFIX=/votes
 PAGE_SIZE=100
+ENABLE_DOMAIN_SEARCH=false
 INSTANCE_QUERY_TIMEOUT_SECONDS=12
 LEMMY_NETWORK=lemmy-easy-deploy_default
 LEMMY_BASE_URL=https://example.com
@@ -97,6 +103,9 @@ cp .env.example .env
 - `LEMMY_NETWORK` is the existing Docker network shared by the proxy, PostgreSQL,
   and this application (*docker network ls* to find the network name).
 - `PAGE_SIZE` can be set from 20 to 250 and defaults to 100.
+- `ENABLE_DOMAIN_SEARCH` accepts `true` or `false`. It defaults to `false`.
+  When disabled, the instance search is removed from the UI and direct
+  `/instance/<domain>` requests return 404.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance-overview query.
   It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
   below the Gunicorn worker timeout.
