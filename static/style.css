@@ -108,20 +108,32 @@ button { cursor: pointer; }
   gap: 16px;
 }
 
-.vote-summaries {
+.vote-summary-grid {
   display: grid;
-  gap: 10px;
+  grid-template-columns: max-content repeat(5, max-content);
+  gap: 10px 22px;
+  align-items: baseline;
 }
 
-.vote-summaries .stats { justify-content: flex-end; }
+.vote-summary-grid.has-neutral {
+  grid-template-columns: max-content repeat(6, max-content);
+}
+
+.vote-summary-row { display: contents; }
+
+.vote-summary-value {
+  text-align: right;
+  white-space: nowrap;
+}
 
 .stats-label {
-  min-width: 104px;
   color: #cbd0db;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .summary-note {
+  grid-column: 2 / -1;
   max-width: 680px;
   font-size: .85rem;
   text-align: right;
@@ -396,6 +408,15 @@ blockquote {
   overflow-wrap: anywhere;
 }
 
+@media (max-width: 1000px) {
+  .user-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .user-summary .summary-note { text-align: left; }
+}
+
 @media (max-width: 700px) {
   .wrap { padding: 20px 14px 60px; }
 
@@ -406,8 +427,25 @@ blockquote {
     flex-direction: column;
   }
 
-  .vote-summaries .stats { justify-content: flex-start; }
-  .summary-note { text-align: left; }
+  .vote-summary-grid {
+    display: block;
+    width: 100%;
+  }
+
+  .vote-summary-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
+  }
+
+  .vote-summary-row + .vote-summary-row { margin-top: 16px; }
+  .vote-summary-row .stats-label { grid-column: 1 / -1; }
+  .vote-summary-value { text-align: left; }
+
+  .summary-note {
+    margin-top: 14px;
+    text-align: left;
+  }
 
   .search { flex-direction: column; }
   .search input { max-width: none; }
