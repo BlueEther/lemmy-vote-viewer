@@ -572,12 +572,17 @@ def build_index_url(
     history_view="cast",
     received_sort="date",
     community=None,
+    community_sort="total",
 ):
     params = {"user": username}
     if history_view == "received":
         params["view"] = "received"
         if received_sort != "date":
             params["sort"] = received_sort
+    elif history_view == "communities":
+        params["view"] = "communities"
+        if community_sort != "total":
+            params["sort"] = community_sort
     if content_type != "all":
         params["type"] = content_type
     if score_filter is not None:
@@ -1157,6 +1162,135 @@ USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL = USER_RECEIVED_ITEMS_SQL_TEMPLATE.format(
 )
 
 
+COMMUNITY_SUMMARY_SORTS = {
+    "total": "(cs.cast_total + cs.received_total) DESC, lower(c.name), cs.community_id",
+    "cast": "cs.cast_total DESC, lower(c.name), cs.community_id",
+    "received": "cs.received_total DESC, lower(c.name), cs.community_id",
+    "down": "(cs.cast_down + cs.received_down) DESC, lower(c.name), cs.community_id",
+    "name": "lower(c.name), cs.community_id",
+}
+
+USER_COMMUNITY_SUMMARY_SQL = """
+WITH cast_by_type AS (
+    SELECT
+        p.community_id,
+        COUNT(*)::bigint AS total,
+        COUNT(*) FILTER (WHERE pl.score > 0)::bigint AS post_up,
+        COUNT(*) FILTER (WHERE pl.score < 0)::bigint AS post_down,
+        0::bigint AS comment_up,
+        0::bigint AS comment_down,
+        COUNT(*) FILTER (WHERE pl.score = 0)::bigint AS neutral
+    FROM post_like pl
+    JOIN post p ON p.id = pl.post_id
+    WHERE pl.person_id = %s
+    GROUP BY p.community_id
+
+    UNION ALL
+
+    SELECT
+        p.community_id,
+        COUNT(*)::bigint AS total,
+        0::bigint AS post_up,
+        0::bigint AS post_down,
+        COUNT(*) FILTER (WHERE cl.score > 0)::bigint AS comment_up,
+        COUNT(*) FILTER (WHERE cl.score < 0)::bigint AS comment_down,
+        COUNT(*) FILTER (WHERE cl.score = 0)::bigint AS neutral
+    FROM comment_like cl
+    JOIN post p ON p.id = cl.post_id
+    WHERE cl.person_id = %s
+    GROUP BY p.community_id
+),
+cast_by_community AS (
+    SELECT
+        community_id,
+        SUM(total)::bigint AS total,
+        SUM(post_up)::bigint AS post_up,
+        SUM(post_down)::bigint AS post_down,
+        SUM(comment_up)::bigint AS comment_up,
+        SUM(comment_down)::bigint AS comment_down,
+        SUM(neutral)::bigint AS neutral
+    FROM cast_by_type
+    GROUP BY community_id
+),
+received_by_type AS (
+    SELECT
+        pa.community_id,
+        SUM(pa.upvotes + pa.downvotes)::bigint AS total,
+        SUM(pa.upvotes)::bigint AS post_up,
+        SUM(pa.downvotes)::bigint AS post_down,
+        0::bigint AS comment_up,
+        0::bigint AS comment_down
+    FROM post_aggregates pa
+    WHERE pa.creator_id = %s
+      AND pa.upvotes + pa.downvotes > 0
+    GROUP BY pa.community_id
+
+    UNION ALL
+
+    SELECT
+        p.community_id,
+        SUM(ca.upvotes + ca.downvotes)::bigint AS total,
+        0::bigint AS post_up,
+        0::bigint AS post_down,
+        SUM(ca.upvotes)::bigint AS comment_up,
+        SUM(ca.downvotes)::bigint AS comment_down
+    FROM comment cm
+    JOIN comment_aggregates ca ON ca.comment_id = cm.id
+    JOIN post p ON p.id = cm.post_id
+    WHERE cm.creator_id = %s
+      AND ca.upvotes + ca.downvotes > 0
+    GROUP BY p.community_id
+),
+received_by_community AS (
+    SELECT
+        community_id,
+        SUM(total)::bigint AS total,
+        SUM(post_up)::bigint AS post_up,
+        SUM(post_down)::bigint AS post_down,
+        SUM(comment_up)::bigint AS comment_up,
+        SUM(comment_down)::bigint AS comment_down
+    FROM received_by_type
+    GROUP BY community_id
+),
+community_summary AS MATERIALIZED (
+    SELECT
+        COALESCE(cv.community_id, rv.community_id) AS community_id,
+        COALESCE(cv.total, 0)::bigint AS cast_total,
+        COALESCE(cv.post_up, 0)::bigint AS cast_post_up,
+        COALESCE(cv.post_down, 0)::bigint AS cast_post_down,
+        COALESCE(cv.comment_up, 0)::bigint AS cast_comment_up,
+        COALESCE(cv.comment_down, 0)::bigint AS cast_comment_down,
+        COALESCE(cv.neutral, 0)::bigint AS cast_neutral,
+        COALESCE(rv.total, 0)::bigint AS received_total,
+        COALESCE(rv.post_up, 0)::bigint AS received_post_up,
+        COALESCE(rv.post_down, 0)::bigint AS received_post_down,
+        COALESCE(rv.comment_up, 0)::bigint AS received_comment_up,
+        COALESCE(rv.comment_down, 0)::bigint AS received_comment_down,
+        COALESCE(rv.post_down, 0)::bigint
+          + COALESCE(rv.comment_down, 0)::bigint AS received_down,
+        COALESCE(cv.post_down, 0)::bigint
+          + COALESCE(cv.comment_down, 0)::bigint AS cast_down
+    FROM cast_by_community cv
+    FULL OUTER JOIN received_by_community rv
+      ON rv.community_id = cv.community_id
+)
+SELECT
+    cs.*,
+    c.name AS community_name,
+    c.title AS community_title,
+    c.local AS community_local,
+    c.actor_id AS community_url,
+    COUNT(*) OVER ()::integer AS community_count
+FROM community_summary cs
+JOIN community c ON c.id = cs.community_id
+WHERE c.visibility = 'Public'
+  AND c.deleted = false
+  AND c.removed = false
+ORDER BY {order_by}
+LIMIT %s OFFSET %s
+"""
+
+
 ITEM_BY_AP_ID_SQL = """
 SELECT 'post'::text AS kind, p.id AS item_id
 FROM post p
@@ -1447,6 +1581,27 @@ def enrich_item(item):
     return item
 
 
+def enrich_community_summary(row, user_handle):
+    row = dict(row)
+    community_domain = actor_domain(row["community_url"])
+    row["community_display"] = (
+        f"!{row['community_name']}"
+        if row["community_local"] or not community_domain
+        else f"!{row['community_name']}@{community_domain}"
+    )
+    row["cast_path"] = build_index_url(
+        user_handle,
+        history_view="cast",
+        community=row["community_display"],
+    )
+    row["received_path"] = build_index_url(
+        user_handle,
+        history_view="received",
+        community=row["community_display"],
+    )
+    return row
+
+
 def enrich_voter(row):
     row = dict(row)
     handle = make_handle(row["voter_name"], row["voter_local"], row["voter_url"])
@@ -1518,21 +1673,31 @@ def index():
         content_type = "all"
 
     history_view = request.args.get("view", "cast")
-    if history_view not in ("cast", "received"):
+    if history_view not in ("cast", "received", "communities"):
         history_view = "cast"
 
-    received_sort = request.args.get("sort", "date")
+    if history_view == "communities":
+        content_type = "all"
+
+    raw_sort = request.args.get("sort", "")
+    received_sort = raw_sort or "date"
     if received_sort not in ("date", "top", "bottom"):
         received_sort = "date"
 
+    community_sort = raw_sort or "total"
+    if community_sort not in COMMUNITY_SUMMARY_SORTS:
+        community_sort = "total"
+
     raw_score = request.args.get("score", "all")
     score_filter = 1 if raw_score == "1" else -1 if raw_score == "-1" else 0 if raw_score == "0" else None
-    if history_view == "received":
+    if history_view != "cast":
         score_filter = None
 
     community_query = request.args.get("community", "").strip()
     if len(community_query) > 512:
         abort(400)
+    if history_view == "communities":
+        community_query = ""
     requested_page = parse_page()
 
     rows = []
@@ -1545,6 +1710,7 @@ def index():
     score_urls = {}
     view_urls = {}
     sort_urls = {}
+    community_sort_urls = {}
     community_clear_url = None
     community_error = None
     community = None
@@ -1615,7 +1781,7 @@ def index():
                             )
                         cur.execute(votes_sql, votes_params)
                         rows = [enrich_user_vote(row) for row in cur.fetchall()]
-                    else:
+                    elif history_view == "received":
                         item_count_key = {
                             "all": "filtered_items",
                             "post": "post_filtered_items",
@@ -1644,6 +1810,41 @@ def index():
                             )
                         cur.execute(received_items_sql, received_items_params)
                         rows = [enrich_item(row) for row in cur.fetchall()]
+                    else:
+                        requested_offset = (requested_page - 1) * PAGE_SIZE
+                        community_summary_sql = USER_COMMUNITY_SUMMARY_SQL.format(
+                            order_by=COMMUNITY_SUMMARY_SORTS[community_sort]
+                        )
+                        cur.execute(
+                            community_summary_sql,
+                            (
+                                user["id"],
+                                user["id"],
+                                user["id"],
+                                user["id"],
+                                PAGE_SIZE,
+                                requested_offset,
+                            ),
+                        )
+                        result_rows = cur.fetchall()
+                        if not result_rows and requested_page > 1:
+                            return redirect(
+                                build_index_url(
+                                    canonical_username,
+                                    history_view="communities",
+                                    community_sort=community_sort,
+                                )
+                            )
+                        community_total = (
+                            result_rows[0]["community_count"] if result_rows else 0
+                        )
+                        pagination = make_pagination(
+                            community_total, requested_page
+                        )
+                        rows = [
+                            enrich_community_summary(row, canonical_username)
+                            for row in result_rows
+                        ]
 
                     type_urls = {
                         "all": build_index_url(
@@ -1686,6 +1887,11 @@ def index():
                             canonical_username, content_type, None, 1, "received",
                             received_sort, community_query,
                         ),
+                        "communities": build_index_url(
+                            canonical_username,
+                            history_view="communities",
+                            community_sort=community_sort,
+                        ),
                     }
                     sort_urls = {
                         sort_name: build_index_url(
@@ -1694,26 +1900,50 @@ def index():
                         )
                         for sort_name in ("date", "top", "bottom")
                     }
+                    community_sort_urls = {
+                        sort_name: build_index_url(
+                            canonical_username,
+                            history_view="communities",
+                            community_sort=sort_name,
+                        )
+                        for sort_name in COMMUNITY_SUMMARY_SORTS
+                    }
                     if pagination["has_prev"]:
-                        pagination["prev_url"] = build_index_url(
-                            canonical_username,
-                            content_type,
-                            score_filter,
-                            pagination["prev_page"],
-                            history_view,
-                            received_sort,
-                            community_query,
-                        )
+                        if history_view == "communities":
+                            pagination["prev_url"] = build_index_url(
+                                canonical_username,
+                                page=pagination["prev_page"],
+                                history_view="communities",
+                                community_sort=community_sort,
+                            )
+                        else:
+                            pagination["prev_url"] = build_index_url(
+                                canonical_username,
+                                content_type,
+                                score_filter,
+                                pagination["prev_page"],
+                                history_view,
+                                received_sort,
+                                community_query,
+                            )
                     if pagination["has_next"]:
-                        pagination["next_url"] = build_index_url(
-                            canonical_username,
-                            content_type,
-                            score_filter,
-                            pagination["next_page"],
-                            history_view,
-                            received_sort,
-                            community_query,
-                        )
+                        if history_view == "communities":
+                            pagination["next_url"] = build_index_url(
+                                canonical_username,
+                                page=pagination["next_page"],
+                                history_view="communities",
+                                community_sort=community_sort,
+                            )
+                        else:
+                            pagination["next_url"] = build_index_url(
+                                canonical_username,
+                                content_type,
+                                score_filter,
+                                pagination["next_page"],
+                                history_view,
+                                received_sort,
+                                community_query,
+                            )
                     community_clear_url = build_index_url(
                         canonical_username,
                         content_type,
@@ -1749,6 +1979,8 @@ def index():
         score_urls=score_urls,
         view_urls=view_urls,
         sort_urls=sort_urls,
+        community_sort=community_sort,
+        community_sort_urls=community_sort_urls,
         community_query=community_query,
         community=community,
         community_error=community_error,

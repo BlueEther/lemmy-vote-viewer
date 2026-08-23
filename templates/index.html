@@ -113,14 +113,17 @@
         <span class="filter-label">History</span>
         <a class="filter-button {{ 'active' if history_view == 'cast' else '' }}" href="{{ view_urls.cast }}">Cast</a>
         <a class="filter-button {{ 'active' if history_view == 'received' else '' }}" href="{{ view_urls.received }}">Received</a>
+        <a class="filter-button {{ 'active' if history_view == 'communities' else '' }}" href="{{ view_urls.communities }}">Communities</a>
       </div>
 
-      <div class="filter-group">
-        <span class="filter-label">Type</span>
-        <a class="filter-button {{ 'active' if content_type == 'all' else '' }}" href="{{ type_urls.all }}">All</a>
-        <a class="filter-button {{ 'active' if content_type == 'post' else '' }}" href="{{ type_urls.post }}">Posts</a>
-        <a class="filter-button {{ 'active' if content_type == 'comment' else '' }}" href="{{ type_urls.comment }}">Comments</a>
-      </div>
+      {% if history_view != 'communities' %}
+        <div class="filter-group">
+          <span class="filter-label">Type</span>
+          <a class="filter-button {{ 'active' if content_type == 'all' else '' }}" href="{{ type_urls.all }}">All</a>
+          <a class="filter-button {{ 'active' if content_type == 'post' else '' }}" href="{{ type_urls.post }}">Posts</a>
+          <a class="filter-button {{ 'active' if content_type == 'comment' else '' }}" href="{{ type_urls.comment }}">Comments</a>
+        </div>
+      {% endif %}
 
       {% if history_view == 'received' %}
         <div class="filter-group">
@@ -143,20 +146,31 @@
         </div>
       {% endif %}
 
-      <form method="get" action="{{ app_prefix }}/" class="filter-group community-filter">
-        <input type="hidden" name="user" value="{{ user.handle }}">
-        {% if content_type != 'all' %}<input type="hidden" name="type" value="{{ content_type }}">{% endif %}
-        {% if history_view == 'received' %}
-          <input type="hidden" name="view" value="received">
-          {% if received_sort != 'date' %}<input type="hidden" name="sort" value="{{ received_sort }}">{% endif %}
-        {% elif score_filter is not none %}
-          <input type="hidden" name="score" value="{{ score_filter }}">
-        {% endif %}
-        <label class="filter-label" for="community-filter">Community</label>
-        <input id="community-filter" name="community" value="{{ community_query }}" aria-label="Community filter" placeholder="!community or !community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false">
-        <button type="submit">Apply</button>
-        {% if community_query %}<a class="filter-button" href="{{ community_clear_url }}">Clear</a>{% endif %}
-      </form>
+      {% if history_view == 'communities' %}
+        <div class="filter-group">
+          <span class="filter-label">Sort</span>
+          <a class="filter-button {{ 'active' if community_sort == 'total' else '' }}" href="{{ community_sort_urls.total }}">Combined</a>
+          <a class="filter-button {{ 'active' if community_sort == 'cast' else '' }}" href="{{ community_sort_urls.cast }}">Cast</a>
+          <a class="filter-button {{ 'active' if community_sort == 'received' else '' }}" href="{{ community_sort_urls.received }}">Received</a>
+          <a class="filter-button {{ 'active' if community_sort == 'down' else '' }}" href="{{ community_sort_urls.down }}">Downvotes</a>
+          <a class="filter-button {{ 'active' if community_sort == 'name' else '' }}" href="{{ community_sort_urls.name }}">Community</a>
+        </div>
+      {% else %}
+        <form method="get" action="{{ app_prefix }}/" class="filter-group community-filter">
+          <input type="hidden" name="user" value="{{ user.handle }}">
+          {% if content_type != 'all' %}<input type="hidden" name="type" value="{{ content_type }}">{% endif %}
+          {% if history_view == 'received' %}
+            <input type="hidden" name="view" value="received">
+            {% if received_sort != 'date' %}<input type="hidden" name="sort" value="{{ received_sort }}">{% endif %}
+          {% elif score_filter is not none %}
+            <input type="hidden" name="score" value="{{ score_filter }}">
+          {% endif %}
+          <label class="filter-label" for="community-filter">Community</label>
+          <input id="community-filter" name="community" value="{{ community_query }}" aria-label="Community filter" placeholder="!community or !community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <button type="submit">Apply</button>
+          {% if community_query %}<a class="filter-button" href="{{ community_clear_url }}">Clear</a>{% endif %}
+        </form>
+      {% endif %}
     </nav>
 
     {% if community_error == 'invalid' %}
@@ -171,6 +185,8 @@
       <p class="notice">No votes match the selected filters.</p>
     {% elif history_view == 'received' and received_items_summary.filtered_total == 0 %}
       <p class="notice">No content with received votes matches the selected filters.</p>
+    {% elif history_view == 'communities' and not rows %}
+      <p class="notice">No community vote activity was found for this user.</p>
     {% endif %}
 
     <section id="votes">
@@ -228,7 +244,7 @@
           </div>
         </article>
       {% endfor %}
-    {% else %}
+    {% elif history_view == 'received' %}
       {% for row in rows %}
         <article class="vote-row">
           <div class="meta received-item-meta">
@@ -269,13 +285,56 @@
           {% endif %}
         </article>
       {% endfor %}
+    {% else %}
+      <div class="instance-table-wrap">
+        <table class="instance-table community-summary-table">
+          <thead>
+            <tr>
+              <th>Community</th>
+              <th>History</th>
+              <th class="numeric">Total</th>
+              <th class="numeric">Posts ↑</th>
+              <th class="numeric">Posts ↓</th>
+              <th class="numeric">Comments ↑</th>
+              <th class="numeric">Comments ↓</th>
+              <th class="numeric">Neutral</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr class="community-cast-row">
+                <td rowspan="2" class="community-name">
+                  <span>{{ row.community_title }}</span>
+                  <a class="muted" href="{{ row.cast_path }}">{{ row.community_display }}</a>
+                </td>
+                <td><a class="history-link" href="{{ row.cast_path }}">Cast</a></td>
+                <td class="numeric"><b>{{ row.cast_total }}</b></td>
+                <td class="numeric up">{{ row.cast_post_up }}</td>
+                <td class="numeric down">{{ row.cast_post_down }}</td>
+                <td class="numeric up">{{ row.cast_comment_up }}</td>
+                <td class="numeric down">{{ row.cast_comment_down }}</td>
+                <td class="numeric neutral">{{ row.cast_neutral }}</td>
+              </tr>
+              <tr class="community-received-row">
+                <td><a class="history-link" href="{{ row.received_path }}">Received</a></td>
+                <td class="numeric"><b>{{ row.received_total }}</b></td>
+                <td class="numeric up">{{ row.received_post_up }}</td>
+                <td class="numeric down">{{ row.received_post_down }}</td>
+                <td class="numeric up">{{ row.received_comment_up }}</td>
+                <td class="numeric down">{{ row.received_comment_down }}</td>
+                <td class="numeric neutral">—</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% endif %}
     </section>
 
     {% if pagination and pagination.page_count > 1 %}
       <nav class="pagination" aria-label="Pagination">
         {% if pagination.has_prev %}<a class="filter-button" href="{{ pagination.prev_url }}">← Previous</a>{% else %}<span></span>{% endif %}
-        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} matching {{ 'votes' if history_view == 'cast' else 'items' }}</span>
+        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} matching {{ 'votes' if history_view == 'cast' else 'items' if history_view == 'received' else 'communities' }}</span>
         {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
       </nav>
     {% endif %}

@@ -401,6 +401,44 @@ button { cursor: pointer; }
 
 .instance-history { white-space: nowrap; }
 
+.community-summary-table .community-cast-row td:not([rowspan]) {
+  padding-bottom: 5px;
+  border-bottom: 0;
+}
+
+.community-summary-table .community-received-row td {
+  padding-top: 5px;
+}
+
+.community-name {
+  min-width: 220px;
+}
+
+.community-name span,
+.community-name a {
+  display: block;
+}
+
+.community-name span {
+  font-weight: 600;
+}
+
+.community-name a {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.community-name a:hover,
+.history-link:hover {
+  text-decoration: underline;
+}
+
+.history-link {
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .site-footer {
   display: flex;
   flex-wrap: wrap;
