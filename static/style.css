@@ -278,15 +278,29 @@ button { cursor: pointer; }
 .error-page h1 { margin: 0 0 12px; }
 .error-page .filter-button { margin-top: 12px; }
 
-.item-title-line {
+.item-context-line,
+.item-title-line,
+.item-comment-line {
   display: flex;
   gap: 12px;
   align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.item-context-line { margin-bottom: 8px; }
+.item-comment-line { margin-top: 16px; }
+
+.item-label {
+  color: #9ca3b3;
+  flex: 0 0 auto;
 }
 
 .item-title-line h1 {
   min-width: 0;
   overflow-wrap: anywhere;
+  margin: 0;
+  font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+  line-height: 1.3;
 }
 
 .item-title-line h1 a { text-decoration: none; }
