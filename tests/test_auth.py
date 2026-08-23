@@ -87,9 +87,21 @@ class AuthenticationTests(unittest.TestCase):
         response = self.request_as(lemmy_user_payload(), "/instance/lemmy.world")
         self.assertEqual(response.status_code, 403)
 
+    def test_logged_in_non_admin_cannot_open_community_overview(self):
+        response = self.request_as(
+            lemmy_user_payload(),
+            "/community/technology@lemmy.world",
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_disabled_instance_search_returns_404_before_authentication(self):
         with patch.object(viewer, "ENABLE_DOMAIN_SEARCH", False):
             response = self.client.get("/instance/lemmy.world")
+        self.assertEqual(response.status_code, 404)
+
+    def test_disabled_instance_search_hides_community_overview(self):
+        with patch.object(viewer, "ENABLE_DOMAIN_SEARCH", False):
+            response = self.client.get("/community/technology@lemmy.world")
         self.assertEqual(response.status_code, 404)
 
     def test_admin_sees_instance_search(self):
@@ -214,6 +226,18 @@ class AuthenticationTests(unittest.TestCase):
             },
         )
 
+    def test_community_overview_url_preserves_sort_and_page(self):
+        url = viewer.build_community_overview_url(
+            "!technology@lemmy.world",
+            "down_ratio",
+            2,
+        )
+        self.assertEqual(urlsplit(url).path, "/community/technology@lemmy.world")
+        self.assertEqual(
+            parse_qs(urlsplit(url).query),
+            {"sort": ["down_ratio"], "page": ["2"]},
+        )
+
     def test_community_summary_links_to_cast_and_received_filters(self):
         row = viewer.enrich_community_summary(
             {
@@ -231,6 +255,10 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(
             row["community_remote_url"],
             "https://lemmy.nz/c/newzealand",
+        )
+        self.assertEqual(
+            row["overview_path"],
+            "/community/newzealand@lemmy.nz",
         )
         self.assertEqual(
             parse_qs(urlsplit(row["cast_path"]).query)["community"],

@@ -305,7 +305,11 @@
               <tr class="community-cast-row">
                 <td rowspan="2" class="community-name">
                   <div class="community-title-line">
-                    <span class="community-title">{{ row.community_title }}</span>
+                    {% if domain_search_enabled %}
+                      <a class="community-title" href="{{ row.overview_path }}">{{ row.community_title }}</a>
+                    {% else %}
+                      <span class="community-title">{{ row.community_title }}</span>
+                    {% endif %}
                     <span class="community-links">
                       <a title="Open community on local Lemmy instance" href="{{ row.community_local_path }}">🏠</a>
                       {% if row.community_remote_url %}
@@ -313,7 +317,7 @@
                       {% endif %}
                     </span>
                   </div>
-                  <a class="community-handle muted" href="{{ row.cast_path }}">{{ row.community_display }}</a>
+                  <a class="community-handle muted" href="{{ row.overview_path if domain_search_enabled else row.cast_path }}">{{ row.community_display }}</a>
                 </td>
                 <td><a class="history-link" href="{{ row.cast_path }}">Cast</a></td>
                 <td class="numeric"><b>{{ row.cast_total }}</b></td>

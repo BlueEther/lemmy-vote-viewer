@@ -29,6 +29,7 @@ comment votes, and inspect the voters recorded for individual items.
 - Filter vote histories by content type and vote direction
 - Filter cast and received histories by local or known remote community
 - Compare votes cast and received across communities in a grouped summary
+- Open a community overview showing recent voters and their vote totals
 - Sort received-vote histories by date or score
 - Review optional instance-level summaries and recent per-user vote totals
 - Follow links to local profiles, content, vote histories, and remote originals
@@ -179,8 +180,9 @@ cp .env.example .env
   and this application (*docker network ls* to find the network name).
 - `PAGE_SIZE` can be set from 20 to 250 and defaults to 100.
 - `ENABLE_DOMAIN_SEARCH` accepts `true` or `false`. It defaults to `false`.
-  When disabled, the instance search is removed from the UI and direct
-  `/instance/<domain>` requests return 404.
+  When disabled, the instance search and community-overview links are removed
+  from the UI, and direct `/instance/<domain>` and `/community/<handle>`
+  requests return 404.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance-overview query.
   It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
   below the Gunicorn worker timeout.
@@ -238,9 +240,9 @@ host-scoped login cookie to be sent to the viewer. Caddy forwards cookies with
 the existing configuration below. Tokens and cookie headers must never be
 included in application or proxy logs.
 
-When `ENABLE_DOMAIN_SEARCH=true`, the instance-search UI is shown only to a
-user who satisfies `AUTH_INSTANCE_REQUIRE`. Direct instance URLs enforce the
-same rule server-side.
+When `ENABLE_DOMAIN_SEARCH=true`, the instance-search UI and community
+overview links are shown only to a user who satisfies `AUTH_INSTANCE_REQUIRE`.
+Direct instance and community-overview URLs enforce the same rule server-side.
 
 ### Passwords with URL-special characters
 

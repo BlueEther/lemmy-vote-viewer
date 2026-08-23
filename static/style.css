@@ -422,7 +422,11 @@ button { cursor: pointer; }
 
 .community-title {
   font-weight: 600;
+  color: inherit;
+  text-decoration: none;
 }
+
+.community-title:hover { text-decoration: underline; }
 
 .community-links {
   display: inline-flex;
@@ -454,6 +458,19 @@ button { cursor: pointer; }
 
 .history-link {
   font-weight: 600;
+  text-decoration: none;
+}
+
+.community-page-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.community-page-title h1 { margin-bottom: 0; }
+
+.community-page-title a {
+  line-height: 1;
   text-decoration: none;
 }
 
