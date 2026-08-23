@@ -46,6 +46,9 @@ comments, and review recent voting activity by instance or community.
 
 ## Security and deployment
 
+See the project's [security policy](SECURITY.md) for supported versions,
+private vulnerability reporting, deployment boundaries, and operator guidance.
+
 - Read-only PostgreSQL access
 - Strict CSP, no-cache, and other security headers
 - No inline JavaScript

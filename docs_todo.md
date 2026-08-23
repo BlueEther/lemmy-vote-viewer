@@ -23,7 +23,7 @@
 
 ### Security policy
 
-- [ ] Create `SECURITY.md` covering:
+- [x] Create `SECURITY.md` covering:
   - private vulnerability reporting;
   - supported versions;
   - the voting-data exposure warning;
