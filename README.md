@@ -502,13 +502,16 @@ expectations, documentation requirements, and the pull request checklist.
 ## LLM declaration
 
 ChatGPT 5.6 Sol was used for the initial framework and SQL, followed by manual
-work with LLM support. An LLM was used to create the HTML templates, which were
-then manually edited to refine the layout and add elements.
-
-Security was then checked with Codex and GitHub Copilot.
+review and further work with LLM support. 
+An LLM was used to create the HTML templates, which werethen manually edited 
+to refine the layout and add elements. Codex was then used during further development for the templates etc
 
 Codex was used to refactor the SQL for significant performance improvements and
 to extend instance, community, and user search functionality.
+
+ChatGPT was used to write documentation - with full review.
+
+Security was then checked with Codex and GitHub Copilot.
 
 ## License
 
