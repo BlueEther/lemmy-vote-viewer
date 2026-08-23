@@ -225,6 +225,14 @@ class AuthenticationTests(unittest.TestCase):
         )
         self.assertEqual(row["community_display"], "!newzealand@lemmy.nz")
         self.assertEqual(
+            row["community_local_path"],
+            "/c/newzealand@lemmy.nz",
+        )
+        self.assertEqual(
+            row["community_remote_url"],
+            "https://lemmy.nz/c/newzealand",
+        )
+        self.assertEqual(
             parse_qs(urlsplit(row["cast_path"]).query)["community"],
             ["!newzealand@lemmy.nz"],
         )
@@ -236,6 +244,18 @@ class AuthenticationTests(unittest.TestCase):
                 "community": ["!newzealand@lemmy.nz"],
             },
         )
+
+        local_row = viewer.enrich_community_summary(
+            {
+                "community_name": "support",
+                "community_local": True,
+                "community_url": "https://example.com/c/support",
+            },
+            "Dave@lemmy.nz",
+        )
+        self.assertEqual(local_row["community_display"], "!support")
+        self.assertEqual(local_row["community_local_path"], "/c/support")
+        self.assertIsNone(local_row["community_remote_url"])
 
 
 if __name__ == "__main__":
