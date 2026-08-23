@@ -4,7 +4,7 @@
 
 ### Release process
 
-- [ ] Create `docs/releasing.md` covering:
+- [x] Create `docs/releasing.md` covering:
   - the project's patch, minor, and major versioning policy;
   - updating `VERSION`;
   - the branch, commit, push, pull request, and merge workflow;

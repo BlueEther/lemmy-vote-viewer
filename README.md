@@ -105,6 +105,9 @@ instance overview.
 
 ## Deploying from Git
 
+Maintainers preparing a new version should follow the
+[release process](docs/releasing.md).
+
 Clone the repository on the server:
 
 ```bash
