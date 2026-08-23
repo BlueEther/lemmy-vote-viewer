@@ -371,6 +371,9 @@ APP_PREFIX=/votes
 
 ## Checks
 
+For startup, routing, authentication, database, timeout, and local-test
+problems, see the [troubleshooting guide](docs/troubleshooting.md).
+
 ```bash
 docker logs lemmy-vote-viewer
 ```

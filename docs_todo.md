@@ -34,7 +34,7 @@
 
 ### Troubleshooting
 
-- [ ] Create `docs/troubleshooting.md` covering:
+- [x] Create `docs/troubleshooting.md` covering:
   - the UI displaying an old version after rebuilding;
   - PostgreSQL statement timeouts;
   - authentication-related HTTP 401, 403, and 503 responses;
