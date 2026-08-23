@@ -27,6 +27,7 @@ comment votes, and inspect the voters recorded for individual items.
 - Look up posts and comments by local path or ActivityPub URL
 - Inspect the voters recorded for individual posts and comments
 - Filter vote histories by content type and vote direction
+- Filter cast and received histories by local or known remote community
 - Sort received-vote histories by date or score
 - Review optional instance-level summaries and recent per-user vote totals
 - Follow links to local profiles, content, vote histories, and remote originals
@@ -76,8 +77,6 @@ instance overview.
 
 ### High priority
 
-- Add community filtering by `!community` or `!community@instance`.
-- Preserve community, sorting, and other filters in shareable URLs.
 - Allow sorting votes by newest or oldest.
 - Add automated tests.
 - Document supported Lemmy versions and database compatibility.
