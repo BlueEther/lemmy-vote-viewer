@@ -81,6 +81,8 @@ instance overview.
 - Allow sorting votes by newest or oldest.
 - Add automated tests.
 - Document supported Lemmy versions and database compatibility.
+- add community icons
+- add comunity overview, like instance
 
 ### Possible enhancements
 
@@ -109,6 +111,13 @@ select a release tag instead (replace `v0.5.0` with the version being deployed):
 ```bash
 git fetch --tags
 git switch --detach v0.5.0
+```
+
+To follow Main
+
+```bash
+git switch main
+git pull --ff-only origin main
 ```
 
 Create the deployment configuration and restrict access to it:
