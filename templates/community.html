@@ -1,0 +1,104 @@
+<!doctype html>
+<!-- Copyright (C) 2026 BlueEther@no.lastname.nz -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ community.title }} · Lemmy Vote Viewer</title>
+  <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+</head>
+<body>
+<main class="wrap">
+  <p><a href="{{ app_prefix }}/">← Vote Viewer</a></p>
+
+  <header>
+    <div class="community-page-title">
+      <h1>{{ community.title }}</h1>
+      <a title="Open community on local Lemmy instance" href="{{ community.local_path }}">🏠</a>
+      {% if community.remote_url %}
+        <a class="remote" title="Open community on its original instance" href="{{ community.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+      {% endif %}
+    </div>
+    <p class="muted">{{ community.handle }}</p>
+    <p class="muted">Users whose votes in this community are recorded by {{ lemmy_instance or 'the local Lemmy instance' }}. Totals cover the last {{ vote_window_days }} days.</p>
+  </header>
+
+  <section class="summary">
+    <div>
+      <h2>Community vote overview (Last {{ vote_window_days }} Days)</h2>
+    </div>
+    <div class="stats">
+      <span><b>{{ summary.voting_users }}</b> recent voters</span>
+      <span><b>{{ summary.total }}</b> recorded votes</span>
+      <span class="up"><b>{{ summary.up }}</b> ↑</span>
+      <span class="down"><b>{{ summary.down }}</b> ↓</span>
+      {% if summary.neutral %}<span class="neutral"><b>{{ summary.neutral }}</b> •</span>{% endif %}
+    </div>
+  </section>
+
+  {% if summary.voting_users %}
+    <nav class="filters" aria-label="Sort users">
+      <div class="filter-group">
+        <span class="filter-label">Sort</span>
+        <a class="filter-button {{ 'active' if sort == 'total' else '' }}" href="{{ sort_urls.total }}">Most votes</a>
+        <a class="filter-button {{ 'active' if sort == 'down' else '' }}" href="{{ sort_urls.down }}">Most downvotes</a>
+        <a class="filter-button {{ 'active' if sort == 'down_ratio' else '' }}" href="{{ sort_urls.down_ratio }}">Downvote %</a>
+        <a class="filter-button {{ 'active' if sort == 'up' else '' }}" href="{{ sort_urls.up }}">Most upvotes</a>
+        <a class="filter-button {{ 'active' if sort == 'recent' else '' }}" href="{{ sort_urls.recent }}">Most recent</a>
+        <a class="filter-button {{ 'active' if sort == 'username' else '' }}" href="{{ sort_urls.username }}">Username</a>
+      </div>
+    </nav>
+
+    {% if sort == 'down_ratio' %}
+      <p class="muted">Downvote percentage sorting requires at least 10 votes within the last {{ vote_window_days }} days; lower-activity users follow.</p>
+    {% endif %}
+
+    <div class="instance-table-wrap">
+      <table class="instance-table">
+        <thead>
+          <tr>
+            <th scope="col">User</th>
+            <th scope="col" class="numeric">Total</th>
+            <th scope="col" class="numeric">Up</th>
+            <th scope="col" class="numeric">Down</th>
+            <th scope="col" class="numeric">Down %</th>
+            <th scope="col">Latest recorded vote</th>
+            <th scope="col"><span class="muted">Community history</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td class="instance-user">
+                <a href="{{ row.vote_path }}">{{ row.display_name or row.name }}</a>
+                <a class="profile-link" title="Open local Lemmy profile" href="{{ row.profile_path }}">👤</a>
+                <span class="muted">@{{ row.handle }}</span>
+              </td>
+              <td class="numeric">{{ row.total }}</td>
+              <td class="numeric up">{{ row.up }}</td>
+              <td class="numeric down">{{ row.down }}</td>
+              <td class="numeric">{{ '%.1f'|format(row.down_percent) }}%</td>
+              <td>{{ row.latest_vote|display_datetime }}</td>
+              <td class="instance-history"><a class="filter-button" href="{{ row.vote_path }}">View</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pagination.page_count > 1 %}
+      <nav class="pagination" aria-label="Pagination">
+        {% if pagination.has_prev %}<a class="filter-button" href="{{ pagination.prev_url }}">← Previous</a>{% else %}<span></span>{% endif %}
+        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} recent voters</span>
+        {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <p class="notice">No votes in this community were recorded within the last {{ vote_window_days }} days.</p>
+  {% endif %}
+
+  {% include "_footer.html" %}
+</main>
+</body>
+</html>

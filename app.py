@@ -615,6 +615,17 @@ def build_instance_url(domain, sort="total", page=1):
     return f"{path}?{urlencode(params)}" if params else path
 
 
+def build_community_overview_url(handle, sort="total", page=1):
+    community = handle.removeprefix("!")
+    path = f"{APP_PREFIX}/community/{quote(community, safe='@._~-')}"
+    params = {}
+    if sort != "total":
+        params["sort"] = sort
+    if page > 1:
+        params["page"] = str(page)
+    return f"{path}?{urlencode(params)}" if params else path
+
+
 def vote_history_path(handle):
     return build_index_url(handle, "all", None, 1) if handle else None
 
@@ -1297,6 +1308,93 @@ LIMIT %s OFFSET %s
 """
 
 
+COMMUNITY_OVERVIEW_SQL = """
+WITH source_votes AS (
+    SELECT pl.person_id, pl.score, pl.published AS voted_at
+    FROM post_like pl
+    JOIN post p ON p.id = pl.post_id
+    WHERE p.community_id = %s
+      AND pl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
+
+    UNION ALL
+
+    SELECT cl.person_id, cl.score, cl.published AS voted_at
+    FROM comment_like cl
+    JOIN post p ON p.id = cl.post_id
+    WHERE p.community_id = %s
+      AND cl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
+),
+vote_totals AS MATERIALIZED (
+    SELECT
+        sv.person_id,
+        COUNT(*)::bigint AS total,
+        COUNT(*) FILTER (WHERE sv.score > 0)::bigint AS up,
+        COUNT(*) FILTER (WHERE sv.score < 0)::bigint AS down,
+        COUNT(*) FILTER (WHERE sv.score = 0)::bigint AS neutral,
+        MAX(sv.voted_at) AS latest_vote
+    FROM source_votes sv
+    GROUP BY sv.person_id
+),
+active_voters AS MATERIALIZED (
+    SELECT
+        pe.id,
+        pe.name,
+        pe.display_name,
+        pe.local,
+        pe.actor_id,
+        vt.total,
+        vt.up,
+        vt.down,
+        vt.neutral,
+        vt.latest_vote
+    FROM vote_totals vt
+    JOIN person pe ON pe.id = vt.person_id
+    WHERE pe.deleted = false
+),
+summary AS (
+    SELECT
+        COUNT(*) AS voting_users,
+        COALESCE(SUM(total), 0)::bigint AS total,
+        COALESCE(SUM(up), 0)::bigint AS up,
+        COALESCE(SUM(down), 0)::bigint AS down,
+        COALESCE(SUM(neutral), 0)::bigint AS neutral
+    FROM active_voters
+),
+ranked_users AS (
+    SELECT
+        av.*,
+        ROW_NUMBER() OVER (ORDER BY {order_by}) AS sort_position
+    FROM active_voters av
+),
+paged_users AS (
+    SELECT *
+    FROM ranked_users
+    WHERE sort_position > %s
+      AND sort_position <= %s
+)
+SELECT
+    summary.voting_users,
+    summary.total AS summary_total,
+    summary.up AS summary_up,
+    summary.down AS summary_down,
+    summary.neutral AS summary_neutral,
+    pu.id,
+    pu.name,
+    pu.display_name,
+    pu.local,
+    pu.actor_id,
+    pu.total,
+    pu.up,
+    pu.down,
+    pu.neutral,
+    pu.latest_vote,
+    pu.sort_position
+FROM summary
+LEFT JOIN paged_users pu ON true
+ORDER BY pu.sort_position
+"""
+
+
 ITEM_BY_AP_ID_SQL = """
 SELECT 'post'::text AS kind, p.id AS item_id
 FROM post p
@@ -1432,6 +1530,19 @@ INSTANCE_SORTS = {
     "up": "vt.up DESC, vt.total DESC, lower(pe.name), pe.id",
     "recent": "vt.latest_vote DESC, lower(pe.name), pe.id",
     "username": "lower(pe.name), pe.id",
+}
+
+COMMUNITY_OVERVIEW_SORTS = {
+    "total": "av.total DESC, lower(av.name), av.id",
+    "down": "av.down DESC, av.total DESC, lower(av.name), av.id",
+    "down_ratio": (
+        "CASE WHEN av.total >= 10 "
+        "THEN av.down::numeric / av.total ELSE -1 END DESC, "
+        "av.total DESC, lower(av.name), av.id"
+    ),
+    "up": "av.up DESC, av.total DESC, lower(av.name), av.id",
+    "recent": "av.latest_vote DESC, lower(av.name), av.id",
+    "username": "lower(av.name), av.id",
 }
 
 
@@ -1603,6 +1714,9 @@ def enrich_community_summary(row, user_handle):
         if row["community_local"]
         else safe_http_url(row["community_url"])
     )
+    row["overview_path"] = build_community_overview_url(
+        row["community_display"]
+    )
     row["cast_path"] = build_index_url(
         user_handle,
         history_view="cast",
@@ -1632,6 +1746,18 @@ def enrich_instance_user(row):
     row["handle"] = handle
     row["vote_path"] = vote_history_path(handle)
     row["down_percent"] = (row["down"] / row["total"] * 100) if row["total"] else 0
+    return row
+
+
+def enrich_community_user(row, community_handle):
+    row = dict(row)
+    handle = make_handle(row["name"], row["local"], row["actor_id"])
+    row["handle"] = handle
+    row["profile_path"] = local_profile_path(handle)
+    row["vote_path"] = build_index_url(handle, community=community_handle)
+    row["down_percent"] = (
+        row["down"] / row["total"] * 100 if row["total"] else 0
+    )
     return row
 
 
@@ -1671,6 +1797,8 @@ def index():
 
     instance_query = ""
     instance_error = None
+    community_overview_query = ""
+    community_overview_error = None
     if ENABLE_DOMAIN_SEARCH:
         instance_query = request.args.get("instance", "").strip()
         if len(instance_query) > 255:
@@ -1681,6 +1809,27 @@ def index():
             if instance_domain:
                 return redirect(build_instance_url(instance_domain))
             instance_error = "invalid"
+
+        community_overview_query = request.args.get(
+            "community_overview",
+            "",
+        ).strip()
+        if len(community_overview_query) > 512:
+            abort(400)
+        if community_overview_query:
+            enforce_access(AUTH_INSTANCE_REQUIRE)
+            parsed_community = parse_community_handle(
+                community_overview_query
+            )
+            if parsed_community:
+                community_name, community_domain = parsed_community
+                community_handle = f"!{community_name}"
+                if community_domain:
+                    community_handle += f"@{community_domain}"
+                return redirect(
+                    build_community_overview_url(community_handle)
+                )
+            community_overview_error = "invalid"
 
     content_type = request.args.get("type", "all")
     if content_type not in ("all", "post", "comment"):
@@ -1978,6 +2127,8 @@ def index():
         item_error=item_error,
         instance_query=instance_query,
         instance_error=instance_error,
+        community_overview_query=community_overview_query,
+        community_overview_error=community_overview_error,
         user=user,
         user_suggestions=user_suggestions,
         rows=rows,
@@ -2083,6 +2234,107 @@ def instance_overview(domain):
         "instance.html",
         instance=instance,
         domain=canonical_domain,
+        summary=summary,
+        rows=rows,
+        sort=sort,
+        sort_urls=sort_urls,
+        pagination=pagination,
+        vote_window_days=INSTANCE_VOTE_WINDOW_DAYS,
+    )
+
+
+@app.route("/community/<community_handle>")
+def community_overview(community_handle):
+    if not ENABLE_DOMAIN_SEARCH:
+        abort(404)
+    enforce_access(AUTH_INSTANCE_REQUIRE)
+
+    sort = request.args.get("sort", "total")
+    if sort not in COMMUNITY_OVERVIEW_SORTS:
+        sort = "total"
+    requested_page = parse_page()
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            community, community_error = resolve_community(
+                cur,
+                f"!{community_handle}",
+            )
+            if community_error or not community:
+                abort(404)
+
+            canonical_handle = community["handle"]
+            community["local_path"] = local_community_path(canonical_handle)
+            community["remote_url"] = (
+                None
+                if community["local"]
+                else safe_http_url(community["actor_id"])
+            )
+            requested_offset = (requested_page - 1) * PAGE_SIZE
+            overview_sql = COMMUNITY_OVERVIEW_SQL.format(
+                order_by=COMMUNITY_OVERVIEW_SORTS[sort],
+                vote_window_days=INSTANCE_VOTE_WINDOW_DAYS,
+            )
+            cur.execute(
+                "SELECT set_config('statement_timeout', %s, true)",
+                (f"{INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
+            )
+            cur.execute(
+                overview_sql,
+                (
+                    community["id"],
+                    community["id"],
+                    requested_offset,
+                    requested_offset + PAGE_SIZE,
+                ),
+            )
+            result_rows = cur.fetchall()
+            overview = result_rows[0]
+            summary = {
+                "voting_users": overview["voting_users"],
+                "total": overview["summary_total"],
+                "up": overview["summary_up"],
+                "down": overview["summary_down"],
+                "neutral": overview["summary_neutral"],
+            }
+            pagination = make_pagination(
+                summary["voting_users"],
+                requested_page,
+            )
+            if pagination["page"] != requested_page:
+                return redirect(
+                    build_community_overview_url(
+                        canonical_handle,
+                        sort,
+                        pagination["page"],
+                    )
+                )
+            rows = [
+                enrich_community_user(row, canonical_handle)
+                for row in result_rows
+                if row["id"] is not None
+            ]
+
+    sort_urls = {
+        key: build_community_overview_url(canonical_handle, key)
+        for key in COMMUNITY_OVERVIEW_SORTS
+    }
+    if pagination["has_prev"]:
+        pagination["prev_url"] = build_community_overview_url(
+            canonical_handle,
+            sort,
+            pagination["prev_page"],
+        )
+    if pagination["has_next"]:
+        pagination["next_url"] = build_community_overview_url(
+            canonical_handle,
+            sort,
+            pagination["next_page"],
+        )
+
+    return render_template(
+        "community.html",
+        community=community,
         summary=summary,
         rows=rows,
         sort=sort,

@@ -78,13 +78,28 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Signed in as Alice", response.data)
         self.assertNotIn(b"Instance vote overview", response.data)
+        self.assertNotIn(b"Community vote overview", response.data)
 
     def test_logged_in_non_admin_cannot_submit_instance_search(self):
         response = self.request_as(lemmy_user_payload(), "/?instance=lemmy.world")
         self.assertEqual(response.status_code, 403)
 
+    def test_logged_in_non_admin_cannot_submit_community_search(self):
+        response = self.request_as(
+            lemmy_user_payload(),
+            "/?community_overview=!technology@lemmy.world",
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_logged_in_non_admin_cannot_open_instance_route(self):
         response = self.request_as(lemmy_user_payload(), "/instance/lemmy.world")
+        self.assertEqual(response.status_code, 403)
+
+    def test_logged_in_non_admin_cannot_open_community_overview(self):
+        response = self.request_as(
+            lemmy_user_payload(),
+            "/community/technology@lemmy.world",
+        )
         self.assertEqual(response.status_code, 403)
 
     def test_disabled_instance_search_returns_404_before_authentication(self):
@@ -92,11 +107,28 @@ class AuthenticationTests(unittest.TestCase):
             response = self.client.get("/instance/lemmy.world")
         self.assertEqual(response.status_code, 404)
 
+    def test_disabled_instance_search_hides_community_overview(self):
+        with patch.object(viewer, "ENABLE_DOMAIN_SEARCH", False):
+            response = self.client.get("/community/technology@lemmy.world")
+        self.assertEqual(response.status_code, 404)
+
     def test_admin_sees_instance_search(self):
         response = self.request_as(lemmy_user_payload(admin=True))
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Signed in as Alice (admin)", response.data)
         self.assertIn(b"Instance vote overview", response.data)
+        self.assertIn(b"Community vote overview", response.data)
+
+    def test_admin_community_search_normalizes_and_redirects(self):
+        response = self.request_as(
+            lemmy_user_payload(admin=True),
+            "/?community_overview=!technology@LEMMY.WORLD.",
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            urlsplit(response.headers["Location"]).path,
+            "/community/technology@lemmy.world",
+        )
 
     def test_allowlist_is_case_insensitive_and_also_allows_admins(self):
         self.assertTrue(
@@ -214,6 +246,38 @@ class AuthenticationTests(unittest.TestCase):
             },
         )
 
+    def test_community_overview_url_preserves_sort_and_page(self):
+        url = viewer.build_community_overview_url(
+            "!technology@lemmy.world",
+            "down_ratio",
+            2,
+        )
+        self.assertEqual(urlsplit(url).path, "/community/technology@lemmy.world")
+        self.assertEqual(
+            parse_qs(urlsplit(url).query),
+            {"sort": ["down_ratio"], "page": ["2"]},
+        )
+
+    def test_community_user_links_to_profile_and_filtered_history(self):
+        row = viewer.enrich_community_user(
+            {
+                "name": "Dave",
+                "local": False,
+                "actor_id": "https://lemmy.nz/u/Dave",
+                "down": 2,
+                "total": 10,
+            },
+            "!newzealand@lemmy.nz",
+        )
+        self.assertEqual(row["profile_path"], "/u/Dave@lemmy.nz")
+        self.assertEqual(
+            parse_qs(urlsplit(row["vote_path"]).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "community": ["!newzealand@lemmy.nz"],
+            },
+        )
+
     def test_community_summary_links_to_cast_and_received_filters(self):
         row = viewer.enrich_community_summary(
             {
@@ -231,6 +295,10 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(
             row["community_remote_url"],
             "https://lemmy.nz/c/newzealand",
+        )
+        self.assertEqual(
+            row["overview_path"],
+            "/community/newzealand@lemmy.nz",
         )
         self.assertEqual(
             parse_qs(urlsplit(row["cast_path"]).query)["community"],
