@@ -1,0 +1,222 @@
+# Unit tests
+
+The unit test suite is in [`tests/test_app.py`](../tests/test_app.py). It uses
+Python's standard-library `unittest` framework and currently contains 26 tests.
+
+The suite covers authentication, authorization, community-handle parsing, URL
+construction, SQL-query selection, link enrichment, and conditional template
+behavior.
+
+## Running the tests
+
+Install the application dependencies, then run the suite from the repository
+root:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+The suite can also be run using an existing local application image without
+installing Python dependencies on the host:
+
+```sh
+docker run --rm \
+  -e PYTHONPATH=/src \
+  -v "$PWD:/src:ro" \
+  -w /tmp \
+  lemmy-vote-viewer-local \
+  python -m unittest discover -s /src/tests -v
+```
+
+The Docker command assumes that the `lemmy-vote-viewer-local` image has already
+been built.
+
+## Test setup and isolation
+
+Before importing the application, the test module supplies fixed environment
+settings for the database URL, application prefix, Lemmy URLs, authentication
+requirements, allowlist, authentication-cache duration, and domain-search
+feature flag. Setting `APP_PREFIX=/` in the module keeps path assertions
+independent of a developer's `.env` file and the application's default `/votes`
+prefix.
+
+The database URL deliberately points to an unused database because these tests
+do not require a live PostgreSQL connection. Each test clears the in-memory
+authentication cache and creates a fresh Flask test client. Lemmy API responses
+are represented by `FakeResponse` and the application's HTTP opener is mocked,
+so the suite does not contact a Lemmy server or the network.
+
+## Authentication and authorization
+
+### `test_anonymous_search_requires_login`
+
+Requests the search page without a JWT cookie and verifies that it returns HTTP
+401 with a prompt to log in to Lemmy.
+
+### `test_anonymous_item_routes_require_login_before_database_access`
+
+Requests both a post-voter route and a comment-voter route anonymously. It
+verifies that both return HTTP 401 before attempting database access.
+
+### `test_logged_in_user_can_search_but_cannot_see_instance_search`
+
+Mocks a valid, non-admin Lemmy account and verifies that the search page loads,
+shows the signed-in username, and hides both instance and community overview
+search controls.
+
+### `test_logged_in_non_admin_cannot_submit_instance_search`
+
+Submits an instance overview search as a logged-in non-admin and verifies that
+the request is rejected with HTTP 403.
+
+### `test_logged_in_non_admin_cannot_submit_community_search`
+
+Submits a community overview search as a logged-in non-admin and verifies that
+the request is rejected with HTTP 403.
+
+### `test_logged_in_non_admin_cannot_open_instance_route`
+
+Requests a direct instance overview URL as a logged-in non-admin and verifies
+that the route returns HTTP 403.
+
+### `test_logged_in_non_admin_cannot_open_community_overview`
+
+Requests a direct community overview URL as a logged-in non-admin and verifies
+that the route returns HTTP 403.
+
+### `test_disabled_instance_search_returns_404_before_authentication`
+
+Temporarily disables domain search and requests an instance overview without
+authentication. It verifies that the feature is hidden with HTTP 404 rather
+than exposing its existence through an authentication response.
+
+### `test_disabled_instance_search_hides_community_overview`
+
+Temporarily disables domain search and verifies that a direct community
+overview URL also returns HTTP 404.
+
+### `test_admin_sees_instance_search`
+
+Mocks an authenticated Lemmy administrator and verifies that the page identifies
+the account as an admin and displays both instance and community overview
+search controls.
+
+### `test_admin_community_search_normalizes_and_redirects`
+
+Submits a community search as an administrator using uppercase instance text
+and a trailing dot. It verifies that the response redirects to a normalized,
+lowercase community overview path.
+
+### `test_allowlist_is_case_insensitive_and_also_allows_admins`
+
+Checks the `allowlist` access requirement directly. It verifies that username
+matching is case-insensitive, administrators are accepted even when absent from
+the allowlist, and an unlisted non-admin is rejected.
+
+### `test_banned_user_is_not_authenticated`
+
+Mocks a Lemmy response for a banned account and verifies that the viewer treats
+the account as unauthenticated and returns HTTP 401.
+
+### `test_authentication_failure_returns_503`
+
+Makes the mocked Lemmy authentication request raise `URLError`. It verifies
+that the viewer returns HTTP 503 with an authentication-service-unavailable
+message.
+
+### `test_authentication_result_is_cached_without_storing_token`
+
+Makes two requests with the same JWT and verifies that Lemmy authentication is
+performed only once. It also checks that the request targets the configured
+internal Lemmy `/api/v3/site` endpoint, sends the JWT as a bearer token, and
+stores only hashed byte keys in the authentication cache rather than the raw
+token.
+
+## Community parsing and URL state
+
+### `test_community_handle_parser_accepts_local_and_remote_handles`
+
+Verifies that the parser accepts both `!newzealand` and
+`!technology@lemmy.world`, trims surrounding whitespace, lowercases the
+instance, and removes a trailing dot from the instance name.
+
+### `test_community_handle_parser_rejects_invalid_values`
+
+Verifies that the parser rejects a missing `!`, an empty name, a missing
+instance after `@`, a path component, and whitespace inside a community name.
+Each invalid value is reported as a separate `subTest` case.
+
+### `test_index_url_preserves_community_filter`
+
+Builds a paginated comment/downvote history URL and verifies that the user,
+content type, score, community filter, and page are all retained in its query
+string.
+
+### `test_community_summary_url_preserves_sort_and_page`
+
+Builds a user's community-summary URL and verifies that the communities view,
+selected sort order, and page number are retained along with the username.
+
+### `test_community_overview_url_preserves_sort_and_page`
+
+Builds a community overview URL and verifies both its community path and the
+preserved sort and page query parameters.
+
+## Query selection
+
+### `test_unfiltered_history_queries_keep_community_out_of_filter_cte`
+
+Checks the SQL constants used for user history. It verifies that unfiltered
+cast and received queries do not reference `f.community_id`, while their
+community-filtered variants do. This guards the less-expensive unfiltered query
+paths from accidentally acquiring the community join and filtering work.
+
+## Link enrichment and templates
+
+### `test_community_user_links_to_profile_and_filtered_history`
+
+Enriches a remote user shown on a community overview. It verifies the local
+profile proxy path, original remote profile URL, and vote-history URL containing
+both the federated username and selected community filter.
+
+### `test_user_link_enrichment_separates_viewer_local_and_remote_urls`
+
+Verifies that a remote user's row has separate vote-history, local-profile, and
+original remote-profile targets. It also verifies that a local user's profile
+uses the shorter local path and has no redundant remote link.
+
+### `test_received_item_text_and_local_links_have_separate_targets`
+
+Enriches a received-vote comment and verifies the distinct destinations for
+the viewer's item-voter page, local Lemmy comment, original remote comment,
+community overview, local community page, and original remote post. It also
+checks that a local community does not receive a redundant remote URL.
+
+### `test_item_community_text_links_only_for_instance_authorized_users`
+
+Renders an item page once for a regular authenticated user and once for an
+administrator. It verifies that both can use the local Lemmy community link,
+while only the administrator receives a clickable vote-viewer community
+overview link on the community name.
+
+### `test_community_summary_links_to_cast_and_received_filters`
+
+Enriches remote and local community-summary rows. For a remote community, it
+verifies the federated display name, local Lemmy path, original remote URL,
+vote-viewer overview path, and cast/received history filters. For a local
+community, it verifies the short display and local path and confirms that no
+redundant remote URL is produced.
+
+## Current boundaries
+
+These are isolated unit tests. They do not currently:
+
+- connect to PostgreSQL or execute the SQL queries against a Lemmy schema;
+- validate compatibility across Lemmy or PostgreSQL versions;
+- run the application through Gunicorn or Docker Compose;
+- exercise pages in a browser or verify responsive layout; or
+- test query performance, indexes, timeouts from a real database, or deep
+  pagination.
+
+Those areas require database-backed integration tests, deployment tests, or
+browser-level tests rather than additions to this isolated unit suite.

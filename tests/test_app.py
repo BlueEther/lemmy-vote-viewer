@@ -9,6 +9,7 @@ from urllib.error import URLError
 from urllib.parse import parse_qs, urlsplit
 
 os.environ["DATABASE_URL"] = "postgresql://unused:unused@localhost/unused"
+os.environ["APP_PREFIX"] = "/"
 os.environ["LEMMY_BASE_URL"] = "https://lemmy.example"
 os.environ["LEMMY_INTERNAL_URL"] = "http://lemmy:8536"
 os.environ["AUTH_PROVIDER"] = "lemmy"
@@ -50,7 +51,7 @@ def lemmy_user_payload(username="Alice", admin=False, banned=False, deleted=Fals
     }
 
 
-class AuthenticationTests(unittest.TestCase):
+class VoteViewerTests(unittest.TestCase):
     def setUp(self):
         viewer._AUTH_CACHE.clear()
         self.client = viewer.app.test_client()
