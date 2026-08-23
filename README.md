@@ -373,6 +373,8 @@ APP_PREFIX=/votes
 
 For startup, routing, authentication, database, timeout, and local-test
 problems, see the [troubleshooting guide](docs/troubleshooting.md).
+The isolated application test suite and its Docker-based runner are documented
+in the [unit-test guide](docs/unit-tests.md).
 
 ```bash
 docker logs lemmy-vote-viewer

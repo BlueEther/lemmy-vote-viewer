@@ -64,5 +64,4 @@
 
 ## Documentation links
 
-- [ ] Link [`docs/unit-tests.md`](docs/unit-tests.md) from `README.md` after the
-  unit-test documentation and test-suite rename are committed.
+- [x] Link [`docs/unit-tests.md`](docs/unit-tests.md) from `README.md`.
