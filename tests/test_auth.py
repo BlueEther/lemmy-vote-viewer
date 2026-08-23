@@ -238,6 +238,26 @@ class AuthenticationTests(unittest.TestCase):
             {"sort": ["down_ratio"], "page": ["2"]},
         )
 
+    def test_community_user_links_to_profile_and_filtered_history(self):
+        row = viewer.enrich_community_user(
+            {
+                "name": "Dave",
+                "local": False,
+                "actor_id": "https://lemmy.nz/u/Dave",
+                "down": 2,
+                "total": 10,
+            },
+            "!newzealand@lemmy.nz",
+        )
+        self.assertEqual(row["profile_path"], "/u/Dave@lemmy.nz")
+        self.assertEqual(
+            parse_qs(urlsplit(row["vote_path"]).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "community": ["!newzealand@lemmy.nz"],
+            },
+        )
+
     def test_community_summary_links_to_cast_and_received_filters(self):
         row = viewer.enrich_community_summary(
             {

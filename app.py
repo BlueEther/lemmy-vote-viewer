@@ -1753,6 +1753,7 @@ def enrich_community_user(row, community_handle):
     row = dict(row)
     handle = make_handle(row["name"], row["local"], row["actor_id"])
     row["handle"] = handle
+    row["profile_path"] = local_profile_path(handle)
     row["vote_path"] = build_index_url(handle, community=community_handle)
     row["down_percent"] = (
         row["down"] / row["total"] * 100 if row["total"] else 0
