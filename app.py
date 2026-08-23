@@ -571,6 +571,7 @@ def build_index_url(
     page=1,
     history_view="cast",
     received_sort="date",
+    community=None,
 ):
     params = {"user": username}
     if history_view == "received":
@@ -581,6 +582,8 @@ def build_index_url(
         params["type"] = content_type
     if score_filter is not None:
         params["score"] = str(score_filter)
+    if community:
+        params["community"] = community
     if page > 1:
         params["page"] = str(page)
     return f"{APP_PREFIX}/?{urlencode(params)}"
@@ -624,6 +627,70 @@ def normalize_instance_domain(value):
     if not labels or any(not INSTANCE_LABEL.fullmatch(label) for label in labels):
         return None
     return value
+
+
+def parse_community_handle(value):
+    value = value.strip()
+    if not value.startswith("!") or len(value) > 512:
+        return None
+
+    handle = value[1:]
+    if "@" in handle:
+        name, domain = handle.rsplit("@", 1)
+        domain = normalize_instance_domain(domain)
+        if not domain:
+            return None
+    else:
+        name = handle
+        domain = None
+
+    name = name.strip()
+    if (
+        not name
+        or len(name) > 255
+        or any(character.isspace() for character in name)
+        or any(character in name for character in "!/@")
+    ):
+        return None
+    return name, domain
+
+
+COMMUNITY_LOOKUP_SQL = """
+SELECT c.id, c.name, c.title, c.local, c.actor_id
+FROM community c
+JOIN instance i ON i.id = c.instance_id
+WHERE lower(c.name) = lower(%s)
+  AND (
+      (%s::text IS NULL AND c.local = true)
+      OR i.domain = %s
+  )
+  AND c.visibility = 'Public'
+  AND c.deleted = false
+  AND c.removed = false
+ORDER BY c.local DESC, c.id
+LIMIT 1
+"""
+
+
+def resolve_community(cur, value):
+    parsed = parse_community_handle(value)
+    if not parsed:
+        return None, "invalid"
+
+    name, domain = parsed
+    cur.execute(COMMUNITY_LOOKUP_SQL, (name, domain, domain))
+    community = cur.fetchone()
+    if not community:
+        return None, "not_found"
+
+    community = dict(community)
+    community_domain = actor_domain(community["actor_id"])
+    community["handle"] = (
+        f"!{community['name']}"
+        if community["local"] or not community_domain
+        else f"!{community['name']}@{community_domain}"
+    )
+    return community, None
 
 
 def resolve_user(cur, username):
@@ -728,7 +795,7 @@ def like_prefix_pattern(value):
     )
 
 
-def find_user_suggestions(cur, username, limit=8):
+def find_user_suggestions(cur, username, community=None, limit=8):
     parsed = parse_user_suggestion_input(username)
     if not parsed:
         return []
@@ -756,17 +823,18 @@ def find_user_suggestions(cur, username, limit=8):
             {
                 "display_name": row["display_name"] or row["name"],
                 "handle": handle,
-                "vote_path": vote_history_path(handle),
+                "vote_path": build_index_url(handle, community=community),
             }
         )
     return suggestions
 
 
-USER_VOTES_SQL = """
+USER_VOTES_SQL_TEMPLATE = """
 WITH filters AS (
     SELECT
         %s::text AS content_type,
         %s::smallint AS score_filter
+        {community_parameter}
 ),
 eligible_votes AS MATERIALIZED (
     SELECT
@@ -782,6 +850,7 @@ eligible_votes AS MATERIALIZED (
     WHERE pl.person_id = %s
       AND (f.content_type = 'all' OR f.content_type = 'post')
       AND (f.score_filter IS NULL OR pl.score = f.score_filter)
+      {post_community_filter}
       AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
@@ -801,6 +870,7 @@ eligible_votes AS MATERIALIZED (
     WHERE cl.person_id = %s
       AND (f.content_type = 'all' OR f.content_type = 'comment')
       AND (f.score_filter IS NULL OR cl.score = f.score_filter)
+      {comment_community_filter}
       AND c.visibility = 'Public'
       AND c.deleted = false
       AND c.removed = false
@@ -864,10 +934,22 @@ JOIN person author
 ORDER BY pv.voted_at DESC, pv.type, pv.post_id, pv.comment_id
 """
 
+USER_VOTES_SQL = USER_VOTES_SQL_TEMPLATE.format(
+    community_parameter="",
+    post_community_filter="",
+    comment_community_filter="",
+)
+
+USER_VOTES_BY_COMMUNITY_SQL = USER_VOTES_SQL_TEMPLATE.format(
+    community_parameter=", %s::integer AS community_id",
+    post_community_filter="AND c.id = f.community_id",
+    comment_community_filter="AND c.id = f.community_id",
+)
+
 
 USER_SUMMARY_SQL = """
 WITH votes AS (
-    SELECT pl.score, 'post'::text AS type
+    SELECT pl.score, 'post'::text AS type, c.id AS community_id
     FROM post_like pl
     JOIN post p ON p.id = pl.post_id
     JOIN community c ON c.id = p.community_id
@@ -878,7 +960,7 @@ WITH votes AS (
 
     UNION ALL
 
-    SELECT cl.score, 'comment'::text AS type
+    SELECT cl.score, 'comment'::text AS type, c.id AS community_id
     FROM comment_like cl
     JOIN post p ON p.id = cl.post_id
     JOIN community c ON c.id = p.community_id
@@ -897,6 +979,7 @@ SELECT
     COUNT(*) FILTER (
         WHERE (%s::text = 'all' OR type = %s::text)
           AND (%s::smallint IS NULL OR score = %s::smallint)
+          AND (%s::integer IS NULL OR community_id = %s::integer)
     )::integer AS filtered_total
 FROM votes
 """
@@ -910,7 +993,11 @@ WITH received_by_type AS (
         COALESCE(SUM(pa.downvotes), 0)::bigint AS down,
         COUNT(*) FILTER (
             WHERE pa.upvotes + pa.downvotes > 0
-        )::bigint AS items
+        )::bigint AS items,
+        COUNT(*) FILTER (
+            WHERE pa.upvotes + pa.downvotes > 0
+              AND (%s::integer IS NULL OR pa.community_id = %s::integer)
+        )::bigint AS filtered_items
     FROM post_aggregates pa
     JOIN community c ON c.id = pa.community_id
     WHERE pa.creator_id = %s
@@ -926,7 +1013,11 @@ WITH received_by_type AS (
         COALESCE(SUM(ca.downvotes), 0)::bigint AS down,
         COUNT(*) FILTER (
             WHERE ca.upvotes + ca.downvotes > 0
-        )::bigint AS items
+        )::bigint AS items,
+        COUNT(*) FILTER (
+            WHERE ca.upvotes + ca.downvotes > 0
+              AND (%s::integer IS NULL OR p.community_id = %s::integer)
+        )::bigint AS filtered_items
     FROM comment cm
     JOIN comment_aggregates ca ON ca.comment_id = cm.id
     JOIN post p ON p.id = cm.post_id
@@ -945,14 +1036,20 @@ SELECT
     COALESCE(SUM(up + down) FILTER (WHERE type = 'comment'), 0)::bigint AS comments,
     COALESCE(SUM(items), 0)::bigint AS items,
     COALESCE(SUM(items) FILTER (WHERE type = 'post'), 0)::bigint AS post_items,
-    COALESCE(SUM(items) FILTER (WHERE type = 'comment'), 0)::bigint AS comment_items
+    COALESCE(SUM(items) FILTER (WHERE type = 'comment'), 0)::bigint AS comment_items,
+    COALESCE(SUM(filtered_items), 0)::bigint AS filtered_items,
+    COALESCE(SUM(filtered_items) FILTER (WHERE type = 'post'), 0)::bigint AS post_filtered_items,
+    COALESCE(SUM(filtered_items) FILTER (WHERE type = 'comment'), 0)::bigint AS comment_filtered_items
 FROM received_by_type
 """
 
 
-USER_RECEIVED_ITEMS_SQL = """
+USER_RECEIVED_ITEMS_SQL_TEMPLATE = """
 WITH filters AS (
-    SELECT %s::text AS content_type, %s::text AS received_sort
+    SELECT
+        %s::text AS content_type,
+        %s::text AS received_sort
+        {community_parameter}
 ),
 eligible_items AS MATERIALIZED (
     SELECT
@@ -972,6 +1069,7 @@ eligible_items AS MATERIALIZED (
     CROSS JOIN filters f
     WHERE pa.creator_id = %s
       AND (f.content_type = 'all' OR f.content_type = 'post')
+      {post_community_filter}
       AND pa.upvotes + pa.downvotes > 0
       AND c.visibility = 'Public'
       AND c.deleted = false
@@ -998,6 +1096,7 @@ eligible_items AS MATERIALIZED (
     CROSS JOIN filters f
     WHERE cm.creator_id = %s
       AND (f.content_type = 'all' OR f.content_type = 'comment')
+      {comment_community_filter}
       AND ca.upvotes + ca.downvotes > 0
       AND c.visibility = 'Public'
       AND c.deleted = false
@@ -1044,6 +1143,18 @@ LEFT JOIN comment cm
    AND cm.id = pi.comment_id
 ORDER BY pi.sort_value DESC, pi.published_at DESC, pi.type, pi.post_id, pi.comment_id
 """
+
+USER_RECEIVED_ITEMS_SQL = USER_RECEIVED_ITEMS_SQL_TEMPLATE.format(
+    community_parameter="",
+    post_community_filter="",
+    comment_community_filter="",
+)
+
+USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL = USER_RECEIVED_ITEMS_SQL_TEMPLATE.format(
+    community_parameter=", %s::integer AS community_id",
+    post_community_filter="AND c.id = f.community_id",
+    comment_community_filter="AND c.id = f.community_id",
+)
 
 
 ITEM_BY_AP_ID_SQL = """
@@ -1418,6 +1529,10 @@ def index():
     score_filter = 1 if raw_score == "1" else -1 if raw_score == "-1" else 0 if raw_score == "0" else None
     if history_view == "received":
         score_filter = None
+
+    community_query = request.args.get("community", "").strip()
+    if len(community_query) > 512:
+        abort(400)
     requested_page = parse_page()
 
     rows = []
@@ -1430,6 +1545,9 @@ def index():
     score_urls = {}
     view_urls = {}
     sort_urls = {}
+    community_clear_url = None
+    community_error = None
+    community = None
     user_suggestions = []
 
     if username:
@@ -1438,15 +1556,42 @@ def index():
                 user = resolve_user(cur, username)
                 if user:
                     canonical_username = user["handle"]
+                    community_id = None
+                    if community_query:
+                        community, community_error = resolve_community(
+                            cur, community_query
+                        )
+                        if community:
+                            community_id = community["id"]
+                            community_query = community["handle"]
+                        else:
+                            community_id = -1
+
                     cur.execute(
                         USER_SUMMARY_SQL,
-                        (user["id"], user["id"], content_type, content_type, score_filter, score_filter),
+                        (
+                            user["id"],
+                            user["id"],
+                            content_type,
+                            content_type,
+                            score_filter,
+                            score_filter,
+                            community_id,
+                            community_id,
+                        ),
                     )
                     summary = cur.fetchone()
 
                     cur.execute(
                         USER_RECEIVED_SUMMARY_SQL,
-                        (user["id"], user["id"]),
+                        (
+                            community_id,
+                            community_id,
+                            user["id"],
+                            community_id,
+                            community_id,
+                            user["id"],
+                        ),
                     )
                     received_summary = cur.fetchone()
 
@@ -1454,20 +1599,27 @@ def index():
                         pagination = make_pagination(
                             summary["filtered_total"], requested_page
                         )
-                        cur.execute(
-                            USER_VOTES_SQL,
-                            (
+                        if community_id is None:
+                            votes_sql = USER_VOTES_SQL
+                            votes_params = (
                                 content_type, score_filter,
                                 user["id"], user["id"],
                                 PAGE_SIZE, pagination["offset"],
-                            ),
-                        )
+                            )
+                        else:
+                            votes_sql = USER_VOTES_BY_COMMUNITY_SQL
+                            votes_params = (
+                                content_type, score_filter, community_id,
+                                user["id"], user["id"],
+                                PAGE_SIZE, pagination["offset"],
+                            )
+                        cur.execute(votes_sql, votes_params)
                         rows = [enrich_user_vote(row) for row in cur.fetchall()]
                     else:
                         item_count_key = {
-                            "all": "items",
-                            "post": "post_items",
-                            "comment": "comment_items",
+                            "all": "filtered_items",
+                            "post": "post_filtered_items",
+                            "comment": "comment_filtered_items",
                         }[content_type]
                         received_items_summary = {
                             "total": received_summary["items"],
@@ -1476,49 +1628,69 @@ def index():
                         pagination = make_pagination(
                             received_items_summary["filtered_total"], requested_page
                         )
-                        cur.execute(
-                            USER_RECEIVED_ITEMS_SQL,
-                            (
+                        if community_id is None:
+                            received_items_sql = USER_RECEIVED_ITEMS_SQL
+                            received_items_params = (
                                 content_type, received_sort,
                                 user["id"], user["id"],
                                 PAGE_SIZE, pagination["offset"],
-                            ),
-                        )
+                            )
+                        else:
+                            received_items_sql = USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL
+                            received_items_params = (
+                                content_type, received_sort, community_id,
+                                user["id"], user["id"],
+                                PAGE_SIZE, pagination["offset"],
+                            )
+                        cur.execute(received_items_sql, received_items_params)
                         rows = [enrich_item(row) for row in cur.fetchall()]
 
                     type_urls = {
                         "all": build_index_url(
                             canonical_username, "all", score_filter, 1, history_view,
-                            received_sort,
+                            received_sort, community_query,
                         ),
                         "post": build_index_url(
                             canonical_username, "post", score_filter, 1, history_view,
-                            received_sort,
+                            received_sort, community_query,
                         ),
                         "comment": build_index_url(
                             canonical_username, "comment", score_filter, 1, history_view,
-                            received_sort,
+                            received_sort, community_query,
                         ),
                     }
                     score_urls = {
-                        "all": build_index_url(canonical_username, content_type, None),
-                        "1": build_index_url(canonical_username, content_type, 1),
-                        "-1": build_index_url(canonical_username, content_type, -1),
-                        "0": build_index_url(canonical_username, content_type, 0),
+                        "all": build_index_url(
+                            canonical_username, content_type, None,
+                            community=community_query,
+                        ),
+                        "1": build_index_url(
+                            canonical_username, content_type, 1,
+                            community=community_query,
+                        ),
+                        "-1": build_index_url(
+                            canonical_username, content_type, -1,
+                            community=community_query,
+                        ),
+                        "0": build_index_url(
+                            canonical_username, content_type, 0,
+                            community=community_query,
+                        ),
                     }
                     view_urls = {
                         "cast": build_index_url(
-                            canonical_username, content_type, score_filter
+                            canonical_username, content_type, score_filter,
+                            community=community_query,
                         ),
                         "received": build_index_url(
                             canonical_username, content_type, None, 1, "received",
-                            received_sort,
+                            received_sort, community_query,
                         ),
                     }
                     sort_urls = {
                         sort_name: build_index_url(
                             canonical_username, content_type, None, 1, "received",
-                            sort_name,
+                            sort_name, community_query,
                         )
                         for sort_name in ("date", "top", "bottom")
                     }
@@ -1530,6 +1702,7 @@ def index():
                             pagination["prev_page"],
                             history_view,
                             received_sort,
+                            community_query,
                         )
                     if pagination["has_next"]:
                         pagination["next_url"] = build_index_url(
@@ -1539,9 +1712,20 @@ def index():
                             pagination["next_page"],
                             history_view,
                             received_sort,
+                            community_query,
                         )
+                    community_clear_url = build_index_url(
+                        canonical_username,
+                        content_type,
+                        score_filter,
+                        1,
+                        history_view,
+                        received_sort,
+                    )
                 else:
-                    user_suggestions = find_user_suggestions(cur, username)
+                    user_suggestions = find_user_suggestions(
+                        cur, username, community_query
+                    )
 
     return render_template(
         "index.html",
@@ -1565,6 +1749,10 @@ def index():
         score_urls=score_urls,
         view_urls=view_urls,
         sort_urls=sort_urls,
+        community_query=community_query,
+        community=community,
+        community_error=community_error,
+        community_clear_url=community_clear_url,
     )
 
 

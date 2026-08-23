@@ -6,6 +6,7 @@ import os
 import unittest
 from unittest.mock import patch
 from urllib.error import URLError
+from urllib.parse import parse_qs, urlsplit
 
 os.environ["DATABASE_URL"] = "postgresql://unused:unused@localhost/unused"
 os.environ["LEMMY_BASE_URL"] = "https://lemmy.example"
@@ -145,6 +146,56 @@ class AuthenticationTests(unittest.TestCase):
             auth_request.get_header("Authorization"), "Bearer test-token"
         )
         self.assertTrue(all(isinstance(key, bytes) for key in viewer._AUTH_CACHE))
+
+    def test_community_handle_parser_accepts_local_and_remote_handles(self):
+        self.assertEqual(
+            viewer.parse_community_handle("!newzealand"),
+            ("newzealand", None),
+        )
+        self.assertEqual(
+            viewer.parse_community_handle(" !technology@LEMMY.WORLD. "),
+            ("technology", "lemmy.world"),
+        )
+
+    def test_community_handle_parser_rejects_invalid_values(self):
+        for value in (
+            "community",
+            "!",
+            "!community@",
+            "!community/path",
+            "!community name",
+        ):
+            with self.subTest(value=value):
+                self.assertIsNone(viewer.parse_community_handle(value))
+
+    def test_index_url_preserves_community_filter(self):
+        url = viewer.build_index_url(
+            "Dave@lemmy.nz",
+            "comment",
+            -1,
+            3,
+            "cast",
+            community="!newzealand@lemmy.nz",
+        )
+        self.assertEqual(
+            parse_qs(urlsplit(url).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "type": ["comment"],
+                "score": ["-1"],
+                "community": ["!newzealand@lemmy.nz"],
+                "page": ["3"],
+            },
+        )
+
+    def test_unfiltered_history_queries_keep_community_out_of_filter_cte(self):
+        self.assertNotIn("f.community_id", viewer.USER_VOTES_SQL)
+        self.assertNotIn("f.community_id", viewer.USER_RECEIVED_ITEMS_SQL)
+        self.assertIn("f.community_id", viewer.USER_VOTES_BY_COMMUNITY_SQL)
+        self.assertIn(
+            "f.community_id",
+            viewer.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
+        )
 
 
 if __name__ == "__main__":

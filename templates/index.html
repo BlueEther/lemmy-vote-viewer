@@ -142,7 +142,30 @@
           {% endif %}
         </div>
       {% endif %}
+
+      <form method="get" action="{{ app_prefix }}/" class="filter-group community-filter">
+        <input type="hidden" name="user" value="{{ user.handle }}">
+        {% if content_type != 'all' %}<input type="hidden" name="type" value="{{ content_type }}">{% endif %}
+        {% if history_view == 'received' %}
+          <input type="hidden" name="view" value="received">
+          {% if received_sort != 'date' %}<input type="hidden" name="sort" value="{{ received_sort }}">{% endif %}
+        {% elif score_filter is not none %}
+          <input type="hidden" name="score" value="{{ score_filter }}">
+        {% endif %}
+        <label class="filter-label" for="community-filter">Community</label>
+        <input id="community-filter" name="community" value="{{ community_query }}" aria-label="Community filter" placeholder="!community or !community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <button type="submit">Apply</button>
+        {% if community_query %}<a class="filter-button" href="{{ community_clear_url }}">Clear</a>{% endif %}
+      </form>
     </nav>
+
+    {% if community_error == 'invalid' %}
+      <p class="notice">Enter a community as <strong>!community</strong> for a local community or <strong>!community@instance</strong> for a known remote community.</p>
+    {% elif community_error == 'not_found' %}
+      <p class="notice">No known public community found for <strong>{{ community_query }}</strong>. Remote communities must already be known to this Lemmy instance.</p>
+    {% elif community %}
+      <p class="filter-status muted">History filtered to <strong>{{ community.handle }}</strong>. The totals above still cover all public communities.</p>
+    {% endif %}
 
     {% if history_view == 'cast' and summary.filtered_total == 0 %}
       <p class="notice">No votes match the selected filters.</p>

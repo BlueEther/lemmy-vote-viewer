@@ -159,6 +159,22 @@ button { cursor: pointer; }
   margin-right: 2px;
 }
 
+.community-filter {
+  flex: 1 1 100%;
+}
+
+.community-filter input[name="community"] {
+  flex: 1 1 240px;
+  width: auto;
+  max-width: 380px;
+  min-width: 180px;
+}
+
+.filter-status {
+  margin: -4px 0 16px;
+  font-size: .9rem;
+}
+
 .vote-row {
   padding: 18px 0;
   border-top: 1px solid #242832;
@@ -449,6 +465,12 @@ blockquote {
 
   .search { flex-direction: column; }
   .search input { max-width: none; }
+
+  .community-filter .filter-label { flex-basis: 100%; }
+
+  .community-filter input[name="community"] {
+    min-width: 0;
+  }
 
   .voter {
     grid-template-columns: 28px 32px minmax(0, 1fr);

@@ -221,6 +221,7 @@ GRANT SELECT (
     title,
     local,
     actor_id,
+    instance_id,
     visibility,
     deleted,
     removed
