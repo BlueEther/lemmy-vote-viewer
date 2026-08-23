@@ -270,6 +270,7 @@ class AuthenticationTests(unittest.TestCase):
             "!newzealand@lemmy.nz",
         )
         self.assertEqual(row["profile_path"], "/u/Dave@lemmy.nz")
+        self.assertEqual(row["remote_url"], "https://lemmy.nz/u/Dave")
         self.assertEqual(
             parse_qs(urlsplit(row["vote_path"]).query),
             {
@@ -277,6 +278,53 @@ class AuthenticationTests(unittest.TestCase):
                 "community": ["!newzealand@lemmy.nz"],
             },
         )
+
+    def test_user_link_enrichment_separates_viewer_local_and_remote_urls(self):
+        row = viewer.enrich_instance_user(
+            {
+                "name": "Dave",
+                "local": False,
+                "actor_id": "https://lemmy.nz/u/Dave",
+                "down": 2,
+                "total": 10,
+            }
+        )
+        self.assertEqual(
+            parse_qs(urlsplit(row["vote_path"]).query),
+            {"user": ["Dave@lemmy.nz"]},
+        )
+        self.assertEqual(row["profile_path"], "/u/Dave@lemmy.nz")
+        self.assertEqual(row["remote_url"], "https://lemmy.nz/u/Dave")
+
+        local_row = viewer.enrich_instance_user(
+            {
+                "name": "Alice",
+                "local": True,
+                "actor_id": "https://lemmy.example/u/Alice",
+                "down": 0,
+                "total": 1,
+            }
+        )
+        self.assertEqual(local_row["profile_path"], "/u/Alice")
+        self.assertIsNone(local_row["remote_url"])
+
+    def test_received_item_text_and_local_links_have_separate_targets(self):
+        row = viewer.enrich_item(
+            {
+                "type": "comment",
+                "comment_id": 456,
+                "post_id": 123,
+                "community_name": "support",
+                "community_local": True,
+                "community_url": "https://lemmy.example/c/support",
+                "item_local": False,
+                "content_hidden": False,
+                "content_url": "https://lemmy.nz/comment/456",
+            }
+        )
+        self.assertEqual(row["item_vote_path"], "/item/comment/456")
+        self.assertEqual(row["item_local_path"], "/comment/456")
+        self.assertEqual(row["remote_url"], "https://lemmy.nz/comment/456")
 
     def test_community_summary_links_to_cast_and_received_filters(self):
         row = viewer.enrich_community_summary(

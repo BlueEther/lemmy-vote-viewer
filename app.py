@@ -478,6 +478,12 @@ def local_profile_path(handle):
     return "/u/" + quote(handle, safe="@._~-")
 
 
+def remote_profile_url(local, actor_id):
+    if local:
+        return None
+    return safe_http_url(actor_id)
+
+
 def local_community_path(handle):
     if not handle:
         return None
@@ -1674,13 +1680,26 @@ def enrich_user_vote(row):
     if not row["item_local"] and not row["content_hidden"]:
         row["remote_url"] = safe_http_url(row["content_url"])
 
+    if row["type"] == "post":
+        row["item_vote_path"] = build_item_url("post", row["post_id"])
+        row["item_local_path"] = f"/post/{row['post_id']}"
+    else:
+        row["item_vote_path"] = build_item_url("comment", row["comment_id"])
+        row["item_local_path"] = f"/comment/{row['comment_id']}"
+
     if row["author_name"]:
         handle = make_handle(row["author_name"], row["author_local"], row["author_url"])
         row["author_handle"] = handle
         row["author_profile_path"] = local_profile_path(handle)
+        row["author_vote_path"] = vote_history_path(handle)
+        row["author_remote_url"] = remote_profile_url(
+            row["author_local"], row["author_url"]
+        )
     else:
         row["author_handle"] = None
         row["author_profile_path"] = None
+        row["author_vote_path"] = None
+        row["author_remote_url"] = None
     return row
 
 
@@ -1695,6 +1714,12 @@ def enrich_item(item):
     item["remote_url"] = None
     if not item["item_local"] and not item["content_hidden"]:
         item["remote_url"] = safe_http_url(item["content_url"])
+    if item.get("type") == "post":
+        item["item_vote_path"] = build_item_url("post", item["post_id"])
+        item["item_local_path"] = f"/post/{item['post_id']}"
+    elif item.get("type") == "comment":
+        item["item_vote_path"] = build_item_url("comment", item["comment_id"])
+        item["item_local_path"] = f"/comment/{item['comment_id']}"
     return item
 
 
@@ -1737,6 +1762,9 @@ def enrich_voter(row):
     row["voter_display"] = f"@{handle}" if handle else ""
     row["voter_profile_path"] = local_profile_path(handle)
     row["voter_vote_path"] = vote_history_path(handle)
+    row["voter_remote_url"] = remote_profile_url(
+        row["voter_local"], row["voter_url"]
+    )
     return row
 
 
@@ -1744,6 +1772,8 @@ def enrich_instance_user(row):
     row = dict(row)
     handle = make_handle(row["name"], row["local"], row["actor_id"])
     row["handle"] = handle
+    row["profile_path"] = local_profile_path(handle)
+    row["remote_url"] = remote_profile_url(row["local"], row["actor_id"])
     row["vote_path"] = vote_history_path(handle)
     row["down_percent"] = (row["down"] / row["total"] * 100) if row["total"] else 0
     return row
@@ -1754,6 +1784,7 @@ def enrich_community_user(row, community_handle):
     handle = make_handle(row["name"], row["local"], row["actor_id"])
     row["handle"] = handle
     row["profile_path"] = local_profile_path(handle)
+    row["remote_url"] = remote_profile_url(row["local"], row["actor_id"])
     row["vote_path"] = build_index_url(handle, community=community_handle)
     row["down_percent"] = (
         row["down"] / row["total"] * 100 if row["total"] else 0
@@ -1884,6 +1915,9 @@ def index():
             with conn.cursor() as cur:
                 user = resolve_user(cur, username)
                 if user:
+                    user["remote_url"] = remote_profile_url(
+                        user["local"], user["actor_id"]
+                    )
                     canonical_username = user["handle"]
                     community_id = None
                     if community_query:

@@ -66,6 +66,10 @@
             <tr>
               <td class="instance-user">
                 <a href="{{ row.vote_path }}">{{ row.display_name or row.name }}</a>
+                <a class="profile-link" title="Open local Lemmy profile" href="{{ row.profile_path }}">👤</a>
+                {% if row.remote_url %}
+                  <a class="remote" title="Open profile on its original instance" href="{{ row.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+                {% endif %}
                 <span class="muted">@{{ row.handle }}</span>
               </td>
               <td class="numeric">{{ row.total }}</td>
