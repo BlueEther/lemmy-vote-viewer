@@ -91,9 +91,11 @@ instance overview.
 - Add database-backed integration tests for supported Lemmy releases.
 - Improve deep-page performance by replacing large `OFFSET` queries with
   cursor-based pagination.
+- refactor code
 
 ### Possible enhancements
 
+- Add time based voting graphs
 - Add configurable date formatting.
 - Add date-range filtering.
 - Add a health-check endpoint.
