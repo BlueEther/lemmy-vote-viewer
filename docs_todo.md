@@ -14,7 +14,7 @@
 
 ### Database compatibility
 
-- [ ] Create `docs/database-compatibility.md` covering:
+- [x] Create `docs/database-compatibility.md` covering:
   - tested Lemmy and PostgreSQL versions;
   - the database tables and columns required by the viewer;
   - a compatibility-check procedure;

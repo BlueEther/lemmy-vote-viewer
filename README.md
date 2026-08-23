@@ -85,7 +85,6 @@ instance overview.
 ### High priority
 
 - Add oldest-first sorting to cast and received vote histories.
-- Document supported Lemmy versions and database compatibility.
 - Add database-backed integration tests for supported Lemmy releases.
 - Improve deep-page performance by replacing large `OFFSET` queries with
   cursor-based pagination.
@@ -291,6 +290,11 @@ chmod 600 .env
 ```
 
 ## Build environment
+
+Review the [database compatibility guide](docs/database-compatibility.md)
+before connecting the viewer to a new Lemmy release. The guide lists the
+verified versions, required schema, preflight query, and upgrade-testing
+procedure.
 
 Set up the database user:
 
