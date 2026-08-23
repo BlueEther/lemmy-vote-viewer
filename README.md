@@ -494,6 +494,11 @@ The database remains in a named Docker volume. Adding `--volumes` to the `down`
 command permanently deletes that local database and requires a fresh restore.
 The local services do not restart automatically when Docker Desktop starts.
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, test and SQL
+expectations, documentation requirements, and the pull request checklist.
+
 ## LLM declaration
 
 ChatGPT 5.6 Sol was used for the initial framework and SQL, followed by manual

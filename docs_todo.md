@@ -54,7 +54,7 @@
 
 ## Contributing
 
-- [ ] Create `CONTRIBUTING.md` covering:
+- [x] Create `CONTRIBUTING.md` covering:
   - development setup;
   - branch naming;
   - running tests;
