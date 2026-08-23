@@ -96,6 +96,7 @@ instance overview.
 ### Possible enhancements
 
 - Add time based voting graphs
+- All Instance and Community overview - may be expensive on work and SQL
 - Add configurable date formatting.
 - Add date-range filtering.
 - Add a health-check endpoint.
