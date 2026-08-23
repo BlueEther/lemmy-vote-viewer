@@ -1588,6 +1588,8 @@ SELECT
     (p.deleted OR p.removed OR cm.deleted OR cm.removed) AS content_hidden,
     (p.deleted OR p.removed) AS post_hidden,
     p.id AS post_id,
+    p.ap_id AS post_url,
+    p.local AS post_local,
     CASE WHEN p.deleted THEN '[deleted post]'
          WHEN p.removed THEN '[removed post]'
          ELSE p.name END AS post_title,
@@ -1711,6 +1713,17 @@ def enrich_item(item):
         if item["community_local"] or not community_domain
         else f"!{item['community_name']}@{community_domain}"
     )
+    item["community_overview_path"] = build_community_overview_url(
+        item["community_display"]
+    )
+    item["community_local_path"] = local_community_path(
+        item["community_display"]
+    )
+    item["community_remote_url"] = (
+        None
+        if item["community_local"]
+        else safe_http_url(item["community_url"])
+    )
     item["remote_url"] = None
     if not item["item_local"] and not item["content_hidden"]:
         item["remote_url"] = safe_http_url(item["content_url"])
@@ -1720,6 +1733,12 @@ def enrich_item(item):
     elif item.get("type") == "comment":
         item["item_vote_path"] = build_item_url("comment", item["comment_id"])
         item["item_local_path"] = f"/comment/{item['comment_id']}"
+    item["post_remote_url"] = None
+    if (
+        item.get("post_local") is False
+        and not item.get("post_hidden", False)
+    ):
+        item["post_remote_url"] = safe_http_url(item.get("post_url"))
     return item
 
 

@@ -13,10 +13,22 @@
   <p><a href="{{ app_prefix }}/">← Vote Viewer</a></p>
 
   <header class="item-head">
-    <div class="muted">{{ kind|upper }} · {{ item.community_display }}</div>
+    <div class="item-context-line">
+      <span class="item-label">Community:</span>
+      {% if domain_search_enabled %}
+        <a href="{{ item.community_overview_path }}">{{ item.community_display }}</a>
+      {% else %}
+        <span>{{ item.community_display }}</span>
+      {% endif %}
+      <a title="Open community on local Lemmy instance" href="{{ item.community_local_path }}">🏠</a>
+      {% if item.community_remote_url %}
+        <a class="remote" title="Open community on its original instance" href="{{ item.community_remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+      {% endif %}
+    </div>
 
     {% if kind == 'post' %}
       <div class="item-title-line">
+        <span class="item-label">Post:</span>
         {% if item.content_hidden %}
           <h1 class="content-hidden">{{ item.post_title }}</h1>
         {% else %}
@@ -29,24 +41,28 @@
       </div>
     {% else %}
       <div class="item-title-line">
+        <span class="item-label">Post:</span>
         {% if item.post_hidden %}
           <h1 class="content-hidden">{{ item.post_title }}</h1>
         {% else %}
           <h1>{{ item.post_title }}</h1>
           <a title="Open post on local Lemmy instance" href="/post/{{ item.post_id }}">🏠</a>
         {% endif %}
+        {% if item.post_remote_url %}
+          <a class="remote item-remote" title="Open original remote post" href="{{ item.post_remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+        {% endif %}
       </div>
 
-      <blockquote class="{{ 'content-hidden' if item.content_hidden else '' }}">{{ item.comment_content }}</blockquote>
-
-      {% if not item.content_hidden %}
-        <p class="item-links">
-          <a title="Open comment on local Lemmy instance" href="/comment/{{ item.comment_id }}">🏠 Local comment</a>
+      <div class="item-comment-line">
+        <span class="item-label">Comment:</span>
+        {% if not item.content_hidden %}
+          <a title="Open comment on local Lemmy instance" href="/comment/{{ item.comment_id }}">🏠</a>
           {% if item.remote_url %}
-            <a class="remote" title="Open original remote comment" href="{{ item.remote_url }}" target="_blank" rel="noopener noreferrer">🌐 Original</a>
+            <a class="remote" title="Open original remote comment" href="{{ item.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
           {% endif %}
-        </p>
-      {% endif %}
+        {% endif %}
+      </div>
+      <blockquote class="{{ 'content-hidden' if item.content_hidden else '' }}">{{ item.comment_content }}</blockquote>
     {% endif %}
   </header>
 

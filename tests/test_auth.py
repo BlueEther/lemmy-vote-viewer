@@ -320,11 +320,57 @@ class AuthenticationTests(unittest.TestCase):
                 "item_local": False,
                 "content_hidden": False,
                 "content_url": "https://lemmy.nz/comment/456",
+                "post_local": False,
+                "post_hidden": False,
+                "post_url": "https://lemmy.nz/post/123",
             }
         )
         self.assertEqual(row["item_vote_path"], "/item/comment/456")
         self.assertEqual(row["item_local_path"], "/comment/456")
         self.assertEqual(row["remote_url"], "https://lemmy.nz/comment/456")
+        self.assertEqual(row["community_overview_path"], "/community/support")
+        self.assertEqual(row["community_local_path"], "/c/support")
+        self.assertIsNone(row["community_remote_url"])
+        self.assertEqual(row["post_remote_url"], "https://lemmy.nz/post/123")
+
+    def test_item_community_text_links_only_for_instance_authorized_users(self):
+        item = {
+            "post_id": 123,
+            "post_title": "Example post",
+            "content_hidden": False,
+            "remote_url": "https://lemmy.ml/post/456",
+            "community_display": "!asklemmy@lemmy.ml",
+            "community_overview_path": "/community/asklemmy@lemmy.ml",
+            "community_local_path": "/c/asklemmy@lemmy.ml",
+            "community_remote_url": "https://lemmy.ml/c/asklemmy",
+        }
+        context = {
+            "kind": "post",
+            "item": item,
+            "rows": [],
+            "summary": {"up": 0, "down": 0, "neutral": 0, "total": 0},
+            "pagination": {"page_count": 1},
+        }
+
+        with viewer.app.test_request_context("/item/post/123"):
+            with patch.object(
+                viewer,
+                "authenticated_user",
+                return_value={"username": "Alice", "admin": False},
+            ):
+                regular_html = viewer.render_template("item.html", **context)
+            with patch.object(
+                viewer,
+                "authenticated_user",
+                return_value={"username": "Admin", "admin": True},
+            ):
+                admin_html = viewer.render_template("item.html", **context)
+
+        overview_link = 'href="/community/asklemmy@lemmy.ml"'
+        local_link = 'href="/c/asklemmy@lemmy.ml"'
+        self.assertNotIn(overview_link, regular_html)
+        self.assertIn(local_link, regular_html)
+        self.assertIn(overview_link, admin_html)
 
     def test_community_summary_links_to_cast_and_received_filters(self):
         row = viewer.enrich_community_summary(
