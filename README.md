@@ -1,8 +1,9 @@
 # Lemmy Vote Viewer
 
 Lemmy Vote Viewer provides a read-only view of the votes currently stored by a
-Lemmy instance. Search for local or known remote users, filter their post and
-comment votes, and inspect the voters recorded for individual items.
+Lemmy instance. Search local or known remote users, compare votes cast and
+received, filter activity by community, inspect voters on individual posts and
+comments, and review recent voting activity by instance or community.
 
 ## Screenshots
 
@@ -17,6 +18,10 @@ comment votes, and inspect the voters recorded for individual items.
 ### Review an instance's recent voters
 
 ![Instance vote overview with recent vote totals and sorting controls](docs/images/instance-overview.png)
+
+### Review a community's recent voters
+
+![Community vote overview with recent vote totals and sorting controls](docs/images/community-overview.png)
 
 ## Features
 
@@ -79,23 +84,25 @@ instance overview.
 
 ### High priority
 
-- Allow sorting votes by newest or oldest.
-- Add automated tests.
+- Add oldest-first sorting to cast and received vote histories.
 - Document supported Lemmy versions and database compatibility.
-- add community icons
-- add comunity overview, like instance
+- Add database-backed integration tests for supported Lemmy releases.
+- Improve deep-page performance by replacing large `OFFSET` queries with
+  cursor-based pagination.
 
 ### Possible enhancements
 
 - Add configurable date formatting.
 - Add date-range filtering.
 - Add a health-check endpoint.
+- Add short-lived caching for expensive instance and community overviews.
 
 ### Documentation and operations
 
-- Document upgrading, rebuilding, and rerunning `db-grants.sql`.
-- Provide example Caddy access-control and optional-authentication configurations.
-- Add structured request and error logging.
+- Provide example Caddy access-control configurations.
+- Add structured request and error logging with request duration, status,
+  route, and timeout information.
+- Add automated CI checks for tests and Python compilation.
 
 ## Deploying from Git
 
@@ -107,14 +114,14 @@ cd lemmy-vote-viewer
 ```
 
 The default checkout follows `main`. For a reproducible production deployment,
-select a release tag instead (replace `v0.5.0` with the version being deployed):
+select a release tag instead (replace `v0.8.2` with the version being deployed):
 
 ```bash
 git fetch --tags
-git switch --detach v0.5.0
+git switch --detach v0.8.2
 ```
 
-To follow Main
+To follow `main`:
 
 ```bash
 git switch main
@@ -130,19 +137,43 @@ chmod 600 .env
 
 Edit `.env`, then complete the [database setup](#build-environment),
 [Docker deployment](#run-docker), and [Caddy configuration](#caddy) below.
-Re-run `db-grants.sql` before rebuilding whenever a new release requires access
-to additional Lemmy tables or columns.
 
-To update a deployment that follows `main`:
+### Updating an existing deployment
+
+Read the release notes first. They identify configuration or database-access
+changes that need operator attention.
+
+For a deployment that follows `main`:
 
 ```bash
 git switch main
 git pull --ff-only origin main
-docker compose up -d --build --force-recreate
 ```
 
-For tagged deployments, fetch the tags and switch to the new version instead
-of pulling `main`.
+For a tagged deployment:
+
+```bash
+git fetch --tags
+git switch --detach v0.8.2
+```
+
+Reapply the read-only database grants after updating. This is safe to rerun and
+ensures the viewer can access any newly required tables or columns:
+
+```bash
+docker exec -i lemmy-easy-deploy-postgres-1 \
+  psql -U lemmy -d lemmy < db-grants.sql
+```
+
+Rebuild and recreate the viewer, then check its logs:
+
+```bash
+docker compose up -d --build --force-recreate
+docker logs --tail=100 lemmy-vote-viewer
+```
+
+To roll back, fetch the tags, switch to the previous release tag, reapply that
+version's `db-grants.sql`, and rebuild the container using the same commands.
 
 ## Environment
 
@@ -278,8 +309,8 @@ Exit `psql`, then run the grant SQL file:
 docker exec -i lemmy-easy-deploy-postgres-1   psql -U lemmy -d lemmy < db-grants.sql
 ```
 
-Re-run `db-grants.sql` after upgrading the viewer. New releases may require
-read-only access to additional Lemmy columns or aggregate tables.
+The [upgrade procedure](#updating-an-existing-deployment) explains when and how
+to reapply these grants for an existing deployment.
 
 
 ## Run Docker
@@ -296,10 +327,10 @@ or (if nothing has changed)
 docker compose up -d
 ```
 
-stop
+To stop and remove the viewer container:
 
 ```bash
-docker rm -f lemmy-vote-viewer
+docker compose down
 ```
 
 ## Caddy
@@ -450,14 +481,14 @@ The local services do not restart automatically when Docker Desktop starts.
 
 ## LLM declaration
 
-ChatGPT 5.6 Sol was used for the framework and inital SQL, followed by manual work
-with LLM support. An LLM was used to create the HTML templates, which were then
-manually edited to tidy them and add elements.
+ChatGPT 5.6 Sol was used for the initial framework and SQL, followed by manual
+work with LLM support. An LLM was used to create the HTML templates, which were
+then manually edited to refine the layout and add elements.
 
 Security was then checked with Codex and GitHub Copilot.
 
-Codex was uesed to refactor the SQL and gain significent speedup. It was also used for
-extending out the domain and user searching
+Codex was used to refactor the SQL for significant performance improvements and
+to extend instance, community, and user search functionality.
 
 ## License
 
