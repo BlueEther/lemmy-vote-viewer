@@ -78,9 +78,17 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Signed in as Alice", response.data)
         self.assertNotIn(b"Instance vote overview", response.data)
+        self.assertNotIn(b"Community vote overview", response.data)
 
     def test_logged_in_non_admin_cannot_submit_instance_search(self):
         response = self.request_as(lemmy_user_payload(), "/?instance=lemmy.world")
+        self.assertEqual(response.status_code, 403)
+
+    def test_logged_in_non_admin_cannot_submit_community_search(self):
+        response = self.request_as(
+            lemmy_user_payload(),
+            "/?community_overview=!technology@lemmy.world",
+        )
         self.assertEqual(response.status_code, 403)
 
     def test_logged_in_non_admin_cannot_open_instance_route(self):
@@ -109,6 +117,18 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Signed in as Alice (admin)", response.data)
         self.assertIn(b"Instance vote overview", response.data)
+        self.assertIn(b"Community vote overview", response.data)
+
+    def test_admin_community_search_normalizes_and_redirects(self):
+        response = self.request_as(
+            lemmy_user_payload(admin=True),
+            "/?community_overview=!technology@LEMMY.WORLD.",
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            urlsplit(response.headers["Location"]).path,
+            "/community/technology@lemmy.world",
+        )
 
     def test_allowlist_is_case_insensitive_and_also_allows_admins(self):
         self.assertTrue(

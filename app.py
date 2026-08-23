@@ -1797,6 +1797,8 @@ def index():
 
     instance_query = ""
     instance_error = None
+    community_overview_query = ""
+    community_overview_error = None
     if ENABLE_DOMAIN_SEARCH:
         instance_query = request.args.get("instance", "").strip()
         if len(instance_query) > 255:
@@ -1807,6 +1809,27 @@ def index():
             if instance_domain:
                 return redirect(build_instance_url(instance_domain))
             instance_error = "invalid"
+
+        community_overview_query = request.args.get(
+            "community_overview",
+            "",
+        ).strip()
+        if len(community_overview_query) > 512:
+            abort(400)
+        if community_overview_query:
+            enforce_access(AUTH_INSTANCE_REQUIRE)
+            parsed_community = parse_community_handle(
+                community_overview_query
+            )
+            if parsed_community:
+                community_name, community_domain = parsed_community
+                community_handle = f"!{community_name}"
+                if community_domain:
+                    community_handle += f"@{community_domain}"
+                return redirect(
+                    build_community_overview_url(community_handle)
+                )
+            community_overview_error = "invalid"
 
     content_type = request.args.get("type", "all")
     if content_type not in ("all", "post", "comment"):
@@ -2104,6 +2127,8 @@ def index():
         item_error=item_error,
         instance_query=instance_query,
         instance_error=instance_error,
+        community_overview_query=community_overview_query,
+        community_overview_error=community_overview_error,
         user=user,
         user_suggestions=user_suggestions,
         rows=rows,
