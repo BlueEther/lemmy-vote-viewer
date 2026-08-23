@@ -197,6 +197,46 @@ class AuthenticationTests(unittest.TestCase):
             viewer.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
         )
 
+    def test_community_summary_url_preserves_sort_and_page(self):
+        url = viewer.build_index_url(
+            "Dave@lemmy.nz",
+            page=2,
+            history_view="communities",
+            community_sort="down",
+        )
+        self.assertEqual(
+            parse_qs(urlsplit(url).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "view": ["communities"],
+                "sort": ["down"],
+                "page": ["2"],
+            },
+        )
+
+    def test_community_summary_links_to_cast_and_received_filters(self):
+        row = viewer.enrich_community_summary(
+            {
+                "community_name": "newzealand",
+                "community_local": False,
+                "community_url": "https://lemmy.nz/c/newzealand",
+            },
+            "Dave@lemmy.nz",
+        )
+        self.assertEqual(row["community_display"], "!newzealand@lemmy.nz")
+        self.assertEqual(
+            parse_qs(urlsplit(row["cast_path"]).query)["community"],
+            ["!newzealand@lemmy.nz"],
+        )
+        self.assertEqual(
+            parse_qs(urlsplit(row["received_path"]).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "view": ["received"],
+                "community": ["!newzealand@lemmy.nz"],
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

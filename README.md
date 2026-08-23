@@ -28,6 +28,7 @@ comment votes, and inspect the voters recorded for individual items.
 - Inspect the voters recorded for individual posts and comments
 - Filter vote histories by content type and vote direction
 - Filter cast and received histories by local or known remote community
+- Compare votes cast and received across communities in a grouped summary
 - Sort received-vote histories by date or score
 - Review optional instance-level summaries and recent per-user vote totals
 - Follow links to local profiles, content, vote histories, and remote originals
