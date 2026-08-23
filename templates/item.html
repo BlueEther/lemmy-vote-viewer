@@ -20,7 +20,8 @@
         {% if item.content_hidden %}
           <h1 class="content-hidden">{{ item.post_title }}</h1>
         {% else %}
-          <h1><a href="/post/{{ item.post_id }}">{{ item.post_title }}</a></h1>
+          <h1>{{ item.post_title }}</h1>
+          <a title="Open post on local Lemmy instance" href="/post/{{ item.post_id }}">🏠</a>
         {% endif %}
         {% if item.remote_url %}
           <a class="remote item-remote" title="Open original remote post" href="{{ item.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
@@ -31,7 +32,8 @@
         {% if item.post_hidden %}
           <h1 class="content-hidden">{{ item.post_title }}</h1>
         {% else %}
-          <h1><a href="/post/{{ item.post_id }}">{{ item.post_title }}</a></h1>
+          <h1>{{ item.post_title }}</h1>
+          <a title="Open post on local Lemmy instance" href="/post/{{ item.post_id }}">🏠</a>
         {% endif %}
       </div>
 
@@ -39,7 +41,7 @@
 
       {% if not item.content_hidden %}
         <p class="item-links">
-          <a href="/comment/{{ item.comment_id }}">Open local comment ↗</a>
+          <a title="Open comment on local Lemmy instance" href="/comment/{{ item.comment_id }}">🏠 Local comment</a>
           {% if item.remote_url %}
             <a class="remote" title="Open original remote comment" href="{{ item.remote_url }}" target="_blank" rel="noopener noreferrer">🌐 Original</a>
           {% endif %}
@@ -68,8 +70,13 @@
           <span class="vote-mark neutral">•</span>
         {% endif %}
 
-        <a class="profile-link" title="Open local Lemmy profile" href="{{ row.voter_profile_path }}">👤</a>
-        <a class="voter-name" href="{{ row.voter_vote_path }}">{{ row.voter_display_name or row.voter_name }}</a>
+        <span class="voter-identity">
+          <a class="voter-name" href="{{ row.voter_vote_path }}">{{ row.voter_display_name or row.voter_name }}</a>
+          <a class="profile-link" title="Open local Lemmy profile" href="{{ row.voter_profile_path }}">👤</a>
+          {% if row.voter_remote_url %}
+            <a class="remote" title="Open profile on its original instance" href="{{ row.voter_remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+          {% endif %}
+        </span>
         <span class="voter-handle muted">{{ row.voter_display }}</span>
         <span class="voter-time muted">{{ row.voted_at|display_datetime }}</span>
       </div>

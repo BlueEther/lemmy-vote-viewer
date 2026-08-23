@@ -301,11 +301,18 @@ button { cursor: pointer; }
 
 .voter {
   display: grid;
-  grid-template-columns: 28px 32px minmax(160px, 1fr) minmax(180px, 1fr) auto;
+  grid-template-columns: 28px minmax(160px, 1fr) minmax(180px, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid #242832;
+}
+
+.voter-identity {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
 }
 
 .vote-mark {
@@ -546,18 +553,17 @@ blockquote {
   }
 
   .voter {
-    grid-template-columns: 28px 32px minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr);
     grid-template-areas:
-      "vote profile name"
-      ".    .       handle"
-      ".    .       time";
+      "vote identity"
+      ".    handle"
+      ".    time";
     gap: 6px 10px;
     align-items: start;
   }
 
   .vote-mark { grid-area: vote; }
-  .profile-link { grid-area: profile; }
-  .voter-name { grid-area: name; }
+  .voter-identity { grid-area: identity; }
 
   .voter-handle {
     grid-area: handle;
