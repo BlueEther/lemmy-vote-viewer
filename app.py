@@ -478,6 +478,12 @@ def local_profile_path(handle):
     return "/u/" + quote(handle, safe="@._~-")
 
 
+def local_community_path(handle):
+    if not handle:
+        return None
+    return "/c/" + quote(handle.removeprefix("!"), safe="@._~-")
+
+
 LOCAL_ITEM_PATH = re.compile(r"^/(post|comment)/(\d+)/?$")
 
 
@@ -1588,6 +1594,14 @@ def enrich_community_summary(row, user_handle):
         f"!{row['community_name']}"
         if row["community_local"] or not community_domain
         else f"!{row['community_name']}@{community_domain}"
+    )
+    row["community_local_path"] = local_community_path(
+        row["community_display"]
+    )
+    row["community_remote_url"] = (
+        None
+        if row["community_local"]
+        else safe_http_url(row["community_url"])
     )
     row["cast_path"] = build_index_url(
         user_handle,

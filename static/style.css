@@ -414,22 +414,40 @@ button { cursor: pointer; }
   min-width: 220px;
 }
 
-.community-name span,
-.community-name a {
-  display: block;
+.community-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.community-name span {
+.community-title {
   font-weight: 600;
 }
 
-.community-name a {
+.community-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.community-links a {
+  line-height: 1;
+  text-decoration: none;
+}
+
+.community-links a:hover {
+  opacity: 1;
+}
+
+.community-handle {
+  display: block;
   margin-top: 3px;
   overflow-wrap: anywhere;
   text-decoration: none;
 }
 
-.community-name a:hover,
+.community-handle:hover,
 .history-link:hover {
   text-decoration: underline;
 }
