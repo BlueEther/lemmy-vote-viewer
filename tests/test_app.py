@@ -22,6 +22,7 @@ os.environ["ENABLE_DOMAIN_SEARCH"] = "true"
 import app as compatibility_entrypoint
 from vote_viewer import application as viewer
 from vote_viewer import links
+from vote_viewer import queries
 from vote_viewer import create_app
 
 
@@ -512,7 +513,7 @@ class VoteViewerTests(unittest.TestCase):
                     urlsplit(response.headers["Location"]).path,
                     f"/item/{kind}/{item_id}",
                 )
-                self.assertEqual(database.queries[0][0], viewer.ITEM_BY_AP_ID_SQL)
+                self.assertEqual(database.queries[0][0], queries.ITEM_BY_AP_ID_SQL)
                 self.assertEqual(
                     database.queries[0][1],
                     (item_url, alternate_url, item_url, alternate_url),

@@ -30,6 +30,7 @@ and documentation corrections can normally proceed directly to a pull request.
 | `vote_viewer/database.py` | PostgreSQL connection creation and safety options |
 | `vote_viewer/queries.py` | SQL constants, query templates, and controlled sort expressions |
 | `vote_viewer/links.py` | Pure handle, URL, parsing, and pagination helpers |
+| `vote_viewer/services.py` | Database-backed resolution and row enrichment operations |
 | `templates/` | Jinja HTML templates and shared footer |
 | `static/style.css` | Responsive presentation |
 | `tests/test_app.py` | Isolated `unittest` suite |

@@ -11,28 +11,21 @@ from .auth import AuthenticationUnavailable, AuthManager
 from .config import load_config
 from .database import connect_database
 from .links import (
-    actor_domain,
     build_community_overview_url as _build_community_overview_url,
     build_index_url as _build_index_url,
     build_instance_url as _build_instance_url,
     build_item_url as _build_item_url,
-    like_prefix_pattern,
     local_community_path,
-    local_profile_path,
-    make_handle,
     make_pagination as _make_pagination,
     normalize_instance_domain,
     parse_community_handle,
     parse_item_search as _parse_item_search,
     parse_page as _parse_page,
-    parse_user_suggestion_input,
     remote_profile_url,
     safe_http_url,
     vote_history_path as _vote_history_path,
 )
 from .queries import (
-    COMMUNITY_LOOKUP_SQL,
-    USER_SUGGESTIONS_SQL,
     USER_VOTES_SQL,
     USER_VOTES_BY_COMMUNITY_SQL,
     USER_SUMMARY_SQL,
@@ -42,7 +35,6 @@ from .queries import (
     COMMUNITY_SUMMARY_SORTS,
     USER_COMMUNITY_SUMMARY_SQL,
     COMMUNITY_OVERVIEW_SQL,
-    ITEM_BY_AP_ID_SQL,
     INSTANCE_LOOKUP_SQL,
     INSTANCE_OVERVIEW_SQL,
     INSTANCE_SORTS,
@@ -53,6 +45,18 @@ from .queries import (
     COMMENT_VOTERS_SQL,
     POST_VOTER_SUMMARY_SQL,
     COMMENT_VOTER_SUMMARY_SQL,
+)
+from .services import (
+    enrich_community_summary as _enrich_community_summary,
+    enrich_community_user as _enrich_community_user,
+    enrich_instance_user as _enrich_instance_user,
+    enrich_item as _enrich_item,
+    enrich_user_vote as _enrich_user_vote,
+    enrich_voter as _enrich_voter,
+    find_user_suggestions as _find_user_suggestions,
+    resolve_community,
+    resolve_item_search as _resolve_item_search,
+    resolve_user,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -289,279 +293,48 @@ def vote_history_path(handle):
     return _vote_history_path(handle, APP_PREFIX)
 
 
-
-
-
-
-def resolve_community(cur, value):
-    parsed = parse_community_handle(value)
-    if not parsed:
-        return None, "invalid"
-
-    name, domain = parsed
-    cur.execute(COMMUNITY_LOOKUP_SQL, (name, domain, domain))
-    community = cur.fetchone()
-    if not community:
-        return None, "not_found"
-
-    community = dict(community)
-    community_domain = actor_domain(community["actor_id"])
-    community["handle"] = (
-        f"!{community['name']}"
-        if community["local"] or not community_domain
-        else f"!{community['name']}@{community_domain}"
-    )
-    return community, None
-
-
-def resolve_user(cur, username):
-    username = username.strip()
-    if username.startswith("@"):
-        username = username[1:]
-    if not username or len(username) > 512:
-        return None
-
-    if "@" in username:
-        name, domain = username.rsplit("@", 1)
-        name = name.strip()
-        domain = domain.strip().lower().rstrip(".")
-        if not name or not domain or "/" in domain or len(name) > 255:
-            return None
-
-        cur.execute(
-            """
-            SELECT id, name, display_name, local, actor_id, instance_id, deleted
-            FROM person
-            WHERE lower(name) = lower(%s)
-              AND local = false
-              AND deleted = false
-            """,
-            (name,),
-        )
-        for row in cur.fetchall():
-            if actor_domain(row["actor_id"]) == domain:
-                row["instance_domain"] = domain
-                row["handle"] = make_handle(row["name"], row["local"], row["actor_id"])
-                row["profile_path"] = local_profile_path(row["handle"])
-                return row
-        return None
-
-    cur.execute(
-        """
-        SELECT id, name, display_name, local, actor_id, instance_id, deleted
-        FROM person
-        WHERE lower(name) = lower(%s)
-          AND local = true
-          AND deleted = false
-        LIMIT 1
-        """,
-        (username,),
-    )
-    row = cur.fetchone()
-    if row:
-        row["instance_domain"] = actor_domain(row["actor_id"])
-        row["handle"] = make_handle(row["name"], row["local"], row["actor_id"])
-        row["profile_path"] = local_profile_path(row["handle"])
-    return row
-
-
-
-
-
-
 def find_user_suggestions(cur, username, community=None, limit=8):
-    parsed = parse_user_suggestion_input(username)
-    if not parsed:
-        return []
-    name_prefix, domain_prefix = parsed
-    name_pattern = like_prefix_pattern(name_prefix)
-    domain_pattern = like_prefix_pattern(domain_prefix) if domain_prefix is not None else None
-
-    cur.execute(
-        USER_SUGGESTIONS_SQL,
-        (
-            name_pattern,
-            domain_prefix,
-            domain_pattern,
-            name_prefix,
-            limit,
-        ),
+    return _find_user_suggestions(
+        cur,
+        username,
+        community,
+        limit,
+        APP_PREFIX,
     )
-
-    suggestions = []
-    for row in cur.fetchall():
-        handle = make_handle(row["name"], row["local"], row["actor_id"])
-        if not handle:
-            continue
-        suggestions.append(
-            {
-                "display_name": row["display_name"] or row["name"],
-                "handle": handle,
-                "vote_path": build_index_url(handle, community=community),
-            }
-        )
-    return suggestions
-
-
 
 
 def enrich_user_vote(row):
-    row = dict(row)
-    community_domain = actor_domain(row["community_url"])
-    row["community_display"] = (
-        f"!{row['community_name']}"
-        if row["community_local"] or not community_domain
-        else f"!{row['community_name']}@{community_domain}"
-    )
-    row["remote_url"] = None
-    if not row["item_local"] and not row["content_hidden"]:
-        row["remote_url"] = safe_http_url(row["content_url"])
-
-    if row["type"] == "post":
-        row["item_vote_path"] = build_item_url("post", row["post_id"])
-        row["item_local_path"] = f"/post/{row['post_id']}"
-    else:
-        row["item_vote_path"] = build_item_url("comment", row["comment_id"])
-        row["item_local_path"] = f"/comment/{row['comment_id']}"
-
-    if row["author_name"]:
-        handle = make_handle(row["author_name"], row["author_local"], row["author_url"])
-        row["author_handle"] = handle
-        row["author_profile_path"] = local_profile_path(handle)
-        row["author_vote_path"] = vote_history_path(handle)
-        row["author_remote_url"] = remote_profile_url(
-            row["author_local"], row["author_url"]
-        )
-    else:
-        row["author_handle"] = None
-        row["author_profile_path"] = None
-        row["author_vote_path"] = None
-        row["author_remote_url"] = None
-    return row
+    return _enrich_user_vote(row, APP_PREFIX)
 
 
 def enrich_item(item):
-    item = dict(item)
-    community_domain = actor_domain(item["community_url"])
-    item["community_display"] = (
-        f"!{item['community_name']}"
-        if item["community_local"] or not community_domain
-        else f"!{item['community_name']}@{community_domain}"
-    )
-    item["community_overview_path"] = build_community_overview_url(
-        item["community_display"]
-    )
-    item["community_local_path"] = local_community_path(
-        item["community_display"]
-    )
-    item["community_remote_url"] = (
-        None
-        if item["community_local"]
-        else safe_http_url(item["community_url"])
-    )
-    item["remote_url"] = None
-    if not item["item_local"] and not item["content_hidden"]:
-        item["remote_url"] = safe_http_url(item["content_url"])
-    if item.get("type") == "post":
-        item["item_vote_path"] = build_item_url("post", item["post_id"])
-        item["item_local_path"] = f"/post/{item['post_id']}"
-    elif item.get("type") == "comment":
-        item["item_vote_path"] = build_item_url("comment", item["comment_id"])
-        item["item_local_path"] = f"/comment/{item['comment_id']}"
-    item["post_remote_url"] = None
-    if (
-        item.get("post_local") is False
-        and not item.get("post_hidden", False)
-    ):
-        item["post_remote_url"] = safe_http_url(item.get("post_url"))
-    return item
+    return _enrich_item(item, APP_PREFIX)
 
 
 def enrich_community_summary(row, user_handle):
-    row = dict(row)
-    community_domain = actor_domain(row["community_url"])
-    row["community_display"] = (
-        f"!{row['community_name']}"
-        if row["community_local"] or not community_domain
-        else f"!{row['community_name']}@{community_domain}"
-    )
-    row["community_local_path"] = local_community_path(
-        row["community_display"]
-    )
-    row["community_remote_url"] = (
-        None
-        if row["community_local"]
-        else safe_http_url(row["community_url"])
-    )
-    row["overview_path"] = build_community_overview_url(
-        row["community_display"]
-    )
-    row["cast_path"] = build_index_url(
-        user_handle,
-        history_view="cast",
-        community=row["community_display"],
-    )
-    row["received_path"] = build_index_url(
-        user_handle,
-        history_view="received",
-        community=row["community_display"],
-    )
-    return row
+    return _enrich_community_summary(row, user_handle, APP_PREFIX)
 
 
 def enrich_voter(row):
-    row = dict(row)
-    handle = make_handle(row["voter_name"], row["voter_local"], row["voter_url"])
-    row["voter_handle"] = handle
-    row["voter_display"] = f"@{handle}" if handle else ""
-    row["voter_profile_path"] = local_profile_path(handle)
-    row["voter_vote_path"] = vote_history_path(handle)
-    row["voter_remote_url"] = remote_profile_url(
-        row["voter_local"], row["voter_url"]
-    )
-    return row
+    return _enrich_voter(row, APP_PREFIX)
 
 
 def enrich_instance_user(row):
-    row = dict(row)
-    handle = make_handle(row["name"], row["local"], row["actor_id"])
-    row["handle"] = handle
-    row["profile_path"] = local_profile_path(handle)
-    row["remote_url"] = remote_profile_url(row["local"], row["actor_id"])
-    row["vote_path"] = vote_history_path(handle)
-    row["down_percent"] = (row["down"] / row["total"] * 100) if row["total"] else 0
-    return row
+    return _enrich_instance_user(row, APP_PREFIX)
 
 
 def enrich_community_user(row, community_handle):
-    row = dict(row)
-    handle = make_handle(row["name"], row["local"], row["actor_id"])
-    row["handle"] = handle
-    row["profile_path"] = local_profile_path(handle)
-    row["remote_url"] = remote_profile_url(row["local"], row["actor_id"])
-    row["vote_path"] = build_index_url(handle, community=community_handle)
-    row["down_percent"] = (
-        row["down"] / row["total"] * 100 if row["total"] else 0
-    )
-    return row
+    return _enrich_community_user(row, community_handle, APP_PREFIX)
 
 
 def resolve_item_search(item_query):
-    parsed = parse_item_search(item_query)
-    if not parsed:
-        return None, "invalid"
+    return _resolve_item_search(item_query, LEMMY_BASE_URL, db)
 
-    if parsed["local_item"]:
-        return parsed["local_item"], None
 
-    ap_urls = parsed["ap_urls"]
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(ITEM_BY_AP_ID_SQL, (*ap_urls, *ap_urls))
-            row = cur.fetchone()
-    if not row:
-        return None, "not_found"
-    return (row["kind"], row["item_id"]), None
+
+
+
+
 
 
 @app.route("/")
