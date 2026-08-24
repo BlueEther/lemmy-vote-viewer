@@ -24,6 +24,7 @@ vote_viewer/
     links.py                 # Handles, paths, URLs, and parsing
     queries.py               # SQL constants and controlled sort expressions
     services.py              # Resolution and row-enrichment operations
+    web.py                   # Request-aware adapters for routes
     routes/
         __init__.py          # Blueprint registration
         search.py            # User, item, instance, and community search entry
@@ -54,6 +55,8 @@ config
 database, links, queries
   ↓
 auth, services
+  ↓
+web
   ↓
 routes
   ↓
@@ -262,10 +265,10 @@ the versioning guidance in [`releasing.md`](releasing.md).
 
 - [x] Characterization tests cover the major `index()` branches.
 - [x] Production still starts through `app:app`.
-- [ ] Imports follow the documented dependency direction.
-- [ ] No circular imports or unnecessary compatibility re-exports remain.
-- [ ] All unit tests pass.
-- [ ] Local copied-database smoke tests pass.
+- [x] Imports follow the documented dependency direction.
+- [x] No circular imports or unnecessary compatibility re-exports remain.
+- [x] All unit tests pass.
+- [x] Local copied-database smoke tests pass.
 - [ ] Authentication behavior is verified for anonymous, normal, allowlisted,
   and administrator accounts where configured.
 - [ ] Root and prefixed deployments generate correct links.

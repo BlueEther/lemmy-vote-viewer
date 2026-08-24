@@ -1,13 +1,146 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+from datetime import timezone
+from pathlib import Path
+
+from flask import Flask, g, render_template, request
+import psycopg
+
+from .auth import AuthenticationUnavailable, AuthManager
+from .config import load_config
+from .routes import register_blueprints
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG = load_config(project_root=PROJECT_ROOT)
+
+app = Flask(
+    __name__,
+    template_folder=str(PROJECT_ROOT / "templates"),
+    static_folder=str(PROJECT_ROOT / "static"),
+)
+app.config["VOTE_VIEWER_CONFIG"] = CONFIG
+app.extensions["vote_viewer_auth"] = AuthManager(CONFIG)
+
+ERROR_MESSAGES = {
+    400: "The request could not be understood.",
+    401: "Log in to the local Lemmy instance to use this viewer.",
+    403: "Your Lemmy account does not have permission to view this page.",
+    404: "The requested page or item was not found.",
+    500: "The viewer encountered an unexpected error.",
+    503: "The database query took too long. Please try again later.",
+}
+
+
+@app.after_request
+def security_headers(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=()"
+    )
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'none'; "
+        "style-src 'self'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "script-src 'none'; "
+        "connect-src 'none'; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'"
+    )
+    return response
+
+
+@app.context_processor
+def inject_app_config():
+    auth_manager = app.extensions["vote_viewer_auth"]
+    try:
+        auth_user = auth_manager.authenticated_user()
+    except AuthenticationUnavailable:
+        auth_user = None
+    return {
+        "app_prefix": CONFIG.app_prefix,
+        "app_version": CONFIG.app_version,
+        "lemmy_base_url": CONFIG.lemmy_base_url,
+        "lemmy_instance": CONFIG.lemmy_instance,
+        "lemmy_login_url": CONFIG.lemmy_login_url,
+        "auth_user": auth_user,
+        "viewer_access_enabled": auth_manager.access_requirement_met(
+            auth_user, CONFIG.auth_search_require
+        ),
+        "domain_search_enabled": (
+            CONFIG.enable_domain_search
+            and auth_manager.access_requirement_met(
+                auth_user, CONFIG.auth_instance_require
+            )
+        ),
+    }
+
+
+@app.errorhandler(400)
+@app.errorhandler(401)
+@app.errorhandler(403)
+@app.errorhandler(404)
+@app.errorhandler(500)
+def handle_error(error):
+    return render_error(getattr(error, "code", 500))
+
+
+@app.errorhandler(psycopg.errors.QueryCanceled)
+def handle_query_timeout(error):
+    app.logger.warning(
+        "Database query timed out for %s %s",
+        request.method,
+        request.path,
+    )
+    return render_error(503)
+
+
+@app.errorhandler(AuthenticationUnavailable)
+def handle_authentication_unavailable(error):
+    g.auth_unavailable = True
+    app.logger.warning(
+        "Lemmy authentication service unavailable for %s %s",
+        request.method,
+        request.path,
+    )
+    return render_error(
+        503,
+        "The Lemmy authentication service is unavailable. Please try again later.",
+    )
+
+
+def render_error(status_code, message=None):
+    return (
+        render_template(
+            "error.html",
+            status_code=status_code,
+            message=message or ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[500]),
+        ),
+        status_code,
+    )
+
+
+@app.template_filter("display_datetime")
+def display_datetime(value):
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(CONFIG.display_timezone).strftime("%Y-%m-%d %H:%M %Z")
+
+
+register_blueprints(app)
+
 
 def create_app():
-    """Return the configured Flask application.
-
-    Application construction remains in ``application`` temporarily while the
-    behavior-preserving module extraction is in progress.
-    """
-    from .application import app
-
+    """Return the configured Flask application."""
     return app

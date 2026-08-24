@@ -1,9 +1,26 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from flask import Blueprint, abort, redirect, request
+from flask import Blueprint, abort, redirect, render_template, request
 
-from .. import application as legacy
+from ..links import local_community_path, normalize_instance_domain, safe_http_url
+from ..queries import (
+    COMMUNITY_OVERVIEW_SORTS,
+    COMMUNITY_OVERVIEW_SQL,
+    INSTANCE_LOOKUP_SQL,
+    INSTANCE_OVERVIEW_SQL,
+    INSTANCE_SORTS,
+)
+from ..services import enrich_community_user, enrich_instance_user, resolve_community
+from ..web import (
+    build_community_overview_url,
+    build_instance_url,
+    config,
+    db,
+    enforce_access,
+    make_pagination,
+    parse_page,
+)
 
 
 blueprint = Blueprint("overviews", __name__)
@@ -11,45 +28,46 @@ blueprint = Blueprint("overviews", __name__)
 
 @blueprint.route("/instance/<domain>")
 def instance_overview(domain):
-    if not legacy.ENABLE_DOMAIN_SEARCH:
+    settings = config()
+    if not settings.enable_domain_search:
         abort(404)
-    legacy.enforce_access(legacy.AUTH_INSTANCE_REQUIRE)
+    enforce_access(settings.auth_instance_require)
 
-    normalized_domain = legacy.normalize_instance_domain(domain)
+    normalized_domain = normalize_instance_domain(domain)
     if not normalized_domain:
         abort(404)
 
     sort = request.args.get("sort", "total")
-    if sort not in legacy.INSTANCE_SORTS:
+    if sort not in INSTANCE_SORTS:
         sort = "total"
-    requested_page = legacy.parse_page()
+    requested_page = parse_page()
 
-    with legacy.db() as conn:
+    with db() as conn:
         with conn.cursor() as cur:
-            cur.execute(legacy.INSTANCE_LOOKUP_SQL, (normalized_domain,))
+            cur.execute(INSTANCE_LOOKUP_SQL, (normalized_domain,))
             instance = cur.fetchone()
             if not instance:
                 abort(404)
 
-            canonical_domain = legacy.normalize_instance_domain(instance["domain"])
+            canonical_domain = normalize_instance_domain(instance["domain"])
             if not canonical_domain:
                 abort(404)
 
-            requested_offset = (requested_page - 1) * legacy.PAGE_SIZE
-            overview_sql = legacy.INSTANCE_OVERVIEW_SQL.format(
-                order_by=legacy.INSTANCE_SORTS[sort],
-                vote_window_days=legacy.INSTANCE_VOTE_WINDOW_DAYS,
+            requested_offset = (requested_page - 1) * settings.page_size
+            overview_sql = INSTANCE_OVERVIEW_SQL.format(
+                order_by=INSTANCE_SORTS[sort],
+                vote_window_days=settings.instance_vote_window_days,
             )
             cur.execute(
                 "SELECT set_config('statement_timeout', %s, true)",
-                (f"{legacy.INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
+                (f"{settings.instance_query_timeout_seconds}s",),
             )
             cur.execute(
                 overview_sql,
                 (
                     instance["id"],
                     requested_offset,
-                    requested_offset + legacy.PAGE_SIZE,
+                    requested_offset + settings.page_size,
                 ),
             )
             result_rows = cur.fetchall()
@@ -62,31 +80,31 @@ def instance_overview(domain):
                 "down": overview["summary_down"],
                 "neutral": overview["summary_neutral"],
             }
-            pagination = legacy.make_pagination(summary["voting_users"], requested_page)
+            pagination = make_pagination(summary["voting_users"], requested_page)
             if pagination["page"] != requested_page:
                 return redirect(
-                    legacy.build_instance_url(canonical_domain, sort, pagination["page"])
+                    build_instance_url(canonical_domain, sort, pagination["page"])
                 )
             rows = [
-                legacy.enrich_instance_user(row)
+                enrich_instance_user(row, settings.app_prefix)
                 for row in result_rows
                 if row["id"] is not None
             ]
 
     sort_urls = {
-        key: legacy.build_instance_url(canonical_domain, key)
-        for key in legacy.INSTANCE_SORTS
+        key: build_instance_url(canonical_domain, key)
+        for key in INSTANCE_SORTS
     }
     if pagination["has_prev"]:
-        pagination["prev_url"] = legacy.build_instance_url(
+        pagination["prev_url"] = build_instance_url(
             canonical_domain, sort, pagination["prev_page"]
         )
     if pagination["has_next"]:
-        pagination["next_url"] = legacy.build_instance_url(
+        pagination["next_url"] = build_instance_url(
             canonical_domain, sort, pagination["next_page"]
         )
 
-    return legacy.render_template(
+    return render_template(
         "instance.html",
         instance=instance,
         domain=canonical_domain,
@@ -95,25 +113,26 @@ def instance_overview(domain):
         sort=sort,
         sort_urls=sort_urls,
         pagination=pagination,
-        vote_window_days=legacy.INSTANCE_VOTE_WINDOW_DAYS,
+        vote_window_days=settings.instance_vote_window_days,
     )
 
 
 
 @blueprint.route("/community/<community_handle>")
 def community_overview(community_handle):
-    if not legacy.ENABLE_DOMAIN_SEARCH:
+    settings = config()
+    if not settings.enable_domain_search:
         abort(404)
-    legacy.enforce_access(legacy.AUTH_INSTANCE_REQUIRE)
+    enforce_access(settings.auth_instance_require)
 
     sort = request.args.get("sort", "total")
-    if sort not in legacy.COMMUNITY_OVERVIEW_SORTS:
+    if sort not in COMMUNITY_OVERVIEW_SORTS:
         sort = "total"
-    requested_page = legacy.parse_page()
+    requested_page = parse_page()
 
-    with legacy.db() as conn:
+    with db() as conn:
         with conn.cursor() as cur:
-            community, community_error = legacy.resolve_community(
+            community, community_error = resolve_community(
                 cur,
                 f"!{community_handle}",
             )
@@ -121,20 +140,20 @@ def community_overview(community_handle):
                 abort(404)
 
             canonical_handle = community["handle"]
-            community["local_path"] = legacy.local_community_path(canonical_handle)
+            community["local_path"] = local_community_path(canonical_handle)
             community["remote_url"] = (
                 None
                 if community["local"]
-                else legacy.safe_http_url(community["actor_id"])
+                else safe_http_url(community["actor_id"])
             )
-            requested_offset = (requested_page - 1) * legacy.PAGE_SIZE
-            overview_sql = legacy.COMMUNITY_OVERVIEW_SQL.format(
-                order_by=legacy.COMMUNITY_OVERVIEW_SORTS[sort],
-                vote_window_days=legacy.INSTANCE_VOTE_WINDOW_DAYS,
+            requested_offset = (requested_page - 1) * settings.page_size
+            overview_sql = COMMUNITY_OVERVIEW_SQL.format(
+                order_by=COMMUNITY_OVERVIEW_SORTS[sort],
+                vote_window_days=settings.instance_vote_window_days,
             )
             cur.execute(
                 "SELECT set_config('statement_timeout', %s, true)",
-                (f"{legacy.INSTANCE_QUERY_TIMEOUT_SECONDS}s",),
+                (f"{settings.instance_query_timeout_seconds}s",),
             )
             cur.execute(
                 overview_sql,
@@ -142,7 +161,7 @@ def community_overview(community_handle):
                     community["id"],
                     community["id"],
                     requested_offset,
-                    requested_offset + legacy.PAGE_SIZE,
+                    requested_offset + settings.page_size,
                 ),
             )
             result_rows = cur.fetchall()
@@ -154,42 +173,42 @@ def community_overview(community_handle):
                 "down": overview["summary_down"],
                 "neutral": overview["summary_neutral"],
             }
-            pagination = legacy.make_pagination(
+            pagination = make_pagination(
                 summary["voting_users"],
                 requested_page,
             )
             if pagination["page"] != requested_page:
                 return redirect(
-                    legacy.build_community_overview_url(
+                    build_community_overview_url(
                         canonical_handle,
                         sort,
                         pagination["page"],
                     )
                 )
             rows = [
-                legacy.enrich_community_user(row, canonical_handle)
+                enrich_community_user(row, canonical_handle, settings.app_prefix)
                 for row in result_rows
                 if row["id"] is not None
             ]
 
     sort_urls = {
-        key: legacy.build_community_overview_url(canonical_handle, key)
-        for key in legacy.COMMUNITY_OVERVIEW_SORTS
+        key: build_community_overview_url(canonical_handle, key)
+        for key in COMMUNITY_OVERVIEW_SORTS
     }
     if pagination["has_prev"]:
-        pagination["prev_url"] = legacy.build_community_overview_url(
+        pagination["prev_url"] = build_community_overview_url(
             canonical_handle,
             sort,
             pagination["prev_page"],
         )
     if pagination["has_next"]:
-        pagination["next_url"] = legacy.build_community_overview_url(
+        pagination["next_url"] = build_community_overview_url(
             canonical_handle,
             sort,
             pagination["next_page"],
         )
 
-    return legacy.render_template(
+    return render_template(
         "community.html",
         community=community,
         summary=summary,
@@ -197,5 +216,5 @@ def community_overview(community_handle):
         sort=sort,
         sort_urls=sort_urls,
         pagination=pagination,
-        vote_window_days=legacy.INSTANCE_VOTE_WINDOW_DAYS,
+        vote_window_days=settings.instance_vote_window_days,
     )

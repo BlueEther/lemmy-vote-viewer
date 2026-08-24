@@ -1,17 +1,53 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from flask import Blueprint, abort, redirect, request
+from flask import Blueprint, abort, redirect, render_template, request
 
-from .. import application as legacy
+from ..links import (
+    normalize_instance_domain,
+    parse_community_handle,
+    remote_profile_url,
+)
+from ..queries import (
+    COMMUNITY_SUMMARY_SORTS,
+    USER_COMMUNITY_SUMMARY_SQL,
+    USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
+    USER_RECEIVED_ITEMS_SQL,
+    USER_RECEIVED_SUMMARY_SQL,
+    USER_SUMMARY_SQL,
+    USER_VOTES_BY_COMMUNITY_SQL,
+    USER_VOTES_SQL,
+)
+from ..services import (
+    enrich_community_summary,
+    enrich_item,
+    enrich_user_vote,
+    find_user_suggestions,
+    resolve_community,
+    resolve_user,
+)
+from ..web import (
+    build_community_overview_url,
+    build_index_url,
+    build_instance_url,
+    build_item_url,
+    config,
+    db,
+    enforce_access,
+    make_pagination,
+    parse_page,
+    require_access,
+    resolve_item_search,
+)
 
 
 blueprint = Blueprint("search", __name__)
 
 
 @blueprint.route("/")
-@legacy.require_access(legacy.AUTH_SEARCH_REQUIRE)
+@require_access("auth_search_require")
 def index():
+    settings = config()
     username = request.args.get("user", "").strip()
     if len(username) > 512:
         abort(400)
@@ -21,23 +57,23 @@ def index():
         abort(400)
     item_error = None
     if item_query:
-        item_result, item_error = legacy.resolve_item_search(item_query)
+        item_result, item_error = resolve_item_search(item_query)
         if item_result:
-            return redirect(legacy.build_item_url(*item_result))
+            return redirect(build_item_url(*item_result))
 
     instance_query = ""
     instance_error = None
     community_overview_query = ""
     community_overview_error = None
-    if legacy.ENABLE_DOMAIN_SEARCH:
+    if settings.enable_domain_search:
         instance_query = request.args.get("instance", "").strip()
         if len(instance_query) > 255:
             abort(400)
         if instance_query:
-            legacy.enforce_access(legacy.AUTH_INSTANCE_REQUIRE)
-            instance_domain = legacy.normalize_instance_domain(instance_query)
+            enforce_access(settings.auth_instance_require)
+            instance_domain = normalize_instance_domain(instance_query)
             if instance_domain:
-                return redirect(legacy.build_instance_url(instance_domain))
+                return redirect(build_instance_url(instance_domain))
             instance_error = "invalid"
 
         community_overview_query = request.args.get(
@@ -47,8 +83,8 @@ def index():
         if len(community_overview_query) > 512:
             abort(400)
         if community_overview_query:
-            legacy.enforce_access(legacy.AUTH_INSTANCE_REQUIRE)
-            parsed_community = legacy.parse_community_handle(
+            enforce_access(settings.auth_instance_require)
+            parsed_community = parse_community_handle(
                 community_overview_query
             )
             if parsed_community:
@@ -57,7 +93,7 @@ def index():
                 if community_domain:
                     community_handle += f"@{community_domain}"
                 return redirect(
-                    legacy.build_community_overview_url(community_handle)
+                    build_community_overview_url(community_handle)
                 )
             community_overview_error = "invalid"
 
@@ -78,11 +114,19 @@ def index():
         received_sort = "date"
 
     community_sort = raw_sort or "total"
-    if community_sort not in legacy.COMMUNITY_SUMMARY_SORTS:
+    if community_sort not in COMMUNITY_SUMMARY_SORTS:
         community_sort = "total"
 
     raw_score = request.args.get("score", "all")
-    score_filter = 1 if raw_score == "1" else -1 if raw_score == "-1" else 0 if raw_score == "0" else None
+    score_filter = (
+        1
+        if raw_score == "1"
+        else -1
+        if raw_score == "-1"
+        else 0
+        if raw_score == "0"
+        else None
+    )
     if history_view != "cast":
         score_filter = None
 
@@ -91,7 +135,7 @@ def index():
         abort(400)
     if history_view == "communities":
         community_query = ""
-    requested_page = legacy.parse_page()
+    requested_page = parse_page()
 
     rows = []
     summary = None
@@ -110,17 +154,17 @@ def index():
     user_suggestions = []
 
     if username:
-        with legacy.db() as conn:
+        with db() as conn:
             with conn.cursor() as cur:
-                user = legacy.resolve_user(cur, username)
+                user = resolve_user(cur, username)
                 if user:
-                    user["remote_url"] = legacy.remote_profile_url(
+                    user["remote_url"] = remote_profile_url(
                         user["local"], user["actor_id"]
                     )
                     canonical_username = user["handle"]
                     community_id = None
                     if community_query:
-                        community, community_error = legacy.resolve_community(
+                        community, community_error = resolve_community(
                             cur, community_query
                         )
                         if community:
@@ -130,7 +174,7 @@ def index():
                             community_id = -1
 
                     cur.execute(
-                        legacy.USER_SUMMARY_SQL,
+                        USER_SUMMARY_SQL,
                         (
                             user["id"],
                             user["id"],
@@ -145,7 +189,7 @@ def index():
                     summary = cur.fetchone()
 
                     cur.execute(
-                        legacy.USER_RECEIVED_SUMMARY_SQL,
+                        USER_RECEIVED_SUMMARY_SQL,
                         (
                             community_id,
                             community_id,
@@ -158,25 +202,28 @@ def index():
                     received_summary = cur.fetchone()
 
                     if history_view == "cast":
-                        pagination = legacy.make_pagination(
+                        pagination = make_pagination(
                             summary["filtered_total"], requested_page
                         )
                         if community_id is None:
-                            votes_sql = legacy.USER_VOTES_SQL
+                            votes_sql = USER_VOTES_SQL
                             votes_params = (
                                 content_type, score_filter,
                                 user["id"], user["id"],
-                                legacy.PAGE_SIZE, pagination["offset"],
+                                settings.page_size, pagination["offset"],
                             )
                         else:
-                            votes_sql = legacy.USER_VOTES_BY_COMMUNITY_SQL
+                            votes_sql = USER_VOTES_BY_COMMUNITY_SQL
                             votes_params = (
                                 content_type, score_filter, community_id,
                                 user["id"], user["id"],
-                                legacy.PAGE_SIZE, pagination["offset"],
+                                settings.page_size, pagination["offset"],
                             )
                         cur.execute(votes_sql, votes_params)
-                        rows = [legacy.enrich_user_vote(row) for row in cur.fetchall()]
+                        rows = [
+                            enrich_user_vote(row, settings.app_prefix)
+                            for row in cur.fetchall()
+                        ]
                     elif history_view == "received":
                         item_count_key = {
                             "all": "filtered_items",
@@ -187,29 +234,32 @@ def index():
                             "total": received_summary["items"],
                             "filtered_total": received_summary[item_count_key],
                         }
-                        pagination = legacy.make_pagination(
+                        pagination = make_pagination(
                             received_items_summary["filtered_total"], requested_page
                         )
                         if community_id is None:
-                            received_items_sql = legacy.USER_RECEIVED_ITEMS_SQL
+                            received_items_sql = USER_RECEIVED_ITEMS_SQL
                             received_items_params = (
                                 content_type, received_sort,
                                 user["id"], user["id"],
-                                legacy.PAGE_SIZE, pagination["offset"],
+                                settings.page_size, pagination["offset"],
                             )
                         else:
-                            received_items_sql = legacy.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL
+                            received_items_sql = USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL
                             received_items_params = (
                                 content_type, received_sort, community_id,
                                 user["id"], user["id"],
-                                legacy.PAGE_SIZE, pagination["offset"],
+                                settings.page_size, pagination["offset"],
                             )
                         cur.execute(received_items_sql, received_items_params)
-                        rows = [legacy.enrich_item(row) for row in cur.fetchall()]
+                        rows = [
+                            enrich_item(row, settings.app_prefix)
+                            for row in cur.fetchall()
+                        ]
                     else:
-                        requested_offset = (requested_page - 1) * legacy.PAGE_SIZE
-                        community_summary_sql = legacy.USER_COMMUNITY_SUMMARY_SQL.format(
-                            order_by=legacy.COMMUNITY_SUMMARY_SORTS[community_sort]
+                        requested_offset = (requested_page - 1) * settings.page_size
+                        community_summary_sql = USER_COMMUNITY_SUMMARY_SQL.format(
+                            order_by=COMMUNITY_SUMMARY_SORTS[community_sort]
                         )
                         cur.execute(
                             community_summary_sql,
@@ -218,14 +268,14 @@ def index():
                                 user["id"],
                                 user["id"],
                                 user["id"],
-                                legacy.PAGE_SIZE,
+                                settings.page_size,
                                 requested_offset,
                             ),
                         )
                         result_rows = cur.fetchall()
                         if not result_rows and requested_page > 1:
                             return redirect(
-                                legacy.build_index_url(
+                                build_index_url(
                                     canonical_username,
                                     history_view="communities",
                                     community_sort=community_sort,
@@ -234,86 +284,94 @@ def index():
                         community_total = (
                             result_rows[0]["community_count"] if result_rows else 0
                         )
-                        pagination = legacy.make_pagination(
+                        pagination = make_pagination(
                             community_total, requested_page
                         )
                         rows = [
-                            legacy.enrich_community_summary(row, canonical_username)
+                            enrich_community_summary(
+                                row,
+                                canonical_username,
+                                settings.app_prefix,
+                            )
                             for row in result_rows
                         ]
 
                     type_urls = {
-                        "all": legacy.build_index_url(
+                        "all": build_index_url(
                             canonical_username, "all", score_filter, 1, history_view,
                             received_sort, community_query,
                         ),
-                        "post": legacy.build_index_url(
+                        "post": build_index_url(
                             canonical_username, "post", score_filter, 1, history_view,
                             received_sort, community_query,
                         ),
-                        "comment": legacy.build_index_url(
-                            canonical_username, "comment", score_filter, 1, history_view,
+                        "comment": build_index_url(
+                            canonical_username,
+                            "comment",
+                            score_filter,
+                            1,
+                            history_view,
                             received_sort, community_query,
                         ),
                     }
                     score_urls = {
-                        "all": legacy.build_index_url(
+                        "all": build_index_url(
                             canonical_username, content_type, None,
                             community=community_query,
                         ),
-                        "1": legacy.build_index_url(
+                        "1": build_index_url(
                             canonical_username, content_type, 1,
                             community=community_query,
                         ),
-                        "-1": legacy.build_index_url(
+                        "-1": build_index_url(
                             canonical_username, content_type, -1,
                             community=community_query,
                         ),
-                        "0": legacy.build_index_url(
+                        "0": build_index_url(
                             canonical_username, content_type, 0,
                             community=community_query,
                         ),
                     }
                     view_urls = {
-                        "cast": legacy.build_index_url(
+                        "cast": build_index_url(
                             canonical_username, content_type, score_filter,
                             community=community_query,
                         ),
-                        "received": legacy.build_index_url(
+                        "received": build_index_url(
                             canonical_username, content_type, None, 1, "received",
                             received_sort, community_query,
                         ),
-                        "communities": legacy.build_index_url(
+                        "communities": build_index_url(
                             canonical_username,
                             history_view="communities",
                             community_sort=community_sort,
                         ),
                     }
                     sort_urls = {
-                        sort_name: legacy.build_index_url(
+                        sort_name: build_index_url(
                             canonical_username, content_type, None, 1, "received",
                             sort_name, community_query,
                         )
                         for sort_name in ("date", "top", "bottom")
                     }
                     community_sort_urls = {
-                        sort_name: legacy.build_index_url(
+                        sort_name: build_index_url(
                             canonical_username,
                             history_view="communities",
                             community_sort=sort_name,
                         )
-                        for sort_name in legacy.COMMUNITY_SUMMARY_SORTS
+                        for sort_name in COMMUNITY_SUMMARY_SORTS
                     }
                     if pagination["has_prev"]:
                         if history_view == "communities":
-                            pagination["prev_url"] = legacy.build_index_url(
+                            pagination["prev_url"] = build_index_url(
                                 canonical_username,
                                 page=pagination["prev_page"],
                                 history_view="communities",
                                 community_sort=community_sort,
                             )
                         else:
-                            pagination["prev_url"] = legacy.build_index_url(
+                            pagination["prev_url"] = build_index_url(
                                 canonical_username,
                                 content_type,
                                 score_filter,
@@ -324,14 +382,14 @@ def index():
                             )
                     if pagination["has_next"]:
                         if history_view == "communities":
-                            pagination["next_url"] = legacy.build_index_url(
+                            pagination["next_url"] = build_index_url(
                                 canonical_username,
                                 page=pagination["next_page"],
                                 history_view="communities",
                                 community_sort=community_sort,
                             )
                         else:
-                            pagination["next_url"] = legacy.build_index_url(
+                            pagination["next_url"] = build_index_url(
                                 canonical_username,
                                 content_type,
                                 score_filter,
@@ -340,7 +398,7 @@ def index():
                                 received_sort,
                                 community_query,
                             )
-                    community_clear_url = legacy.build_index_url(
+                    community_clear_url = build_index_url(
                         canonical_username,
                         content_type,
                         score_filter,
@@ -349,11 +407,14 @@ def index():
                         received_sort,
                     )
                 else:
-                    user_suggestions = legacy.find_user_suggestions(
-                        cur, username, community_query
+                    user_suggestions = find_user_suggestions(
+                        cur,
+                        username,
+                        community_query,
+                        app_prefix=settings.app_prefix,
                     )
 
-    return legacy.render_template(
+    return render_template(
         "index.html",
         username=username,
         item_query=item_query,

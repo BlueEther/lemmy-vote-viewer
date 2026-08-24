@@ -3,7 +3,9 @@
 
 import json
 import os
+import psycopg
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 from urllib.error import URLError
 from urllib.parse import parse_qs, urlsplit
@@ -20,10 +22,17 @@ os.environ["AUTH_CACHE_SECONDS"] = "60"
 os.environ["ENABLE_DOMAIN_SEARCH"] = "true"
 
 import app as compatibility_entrypoint
-from vote_viewer import application as viewer
+import vote_viewer as viewer
 from vote_viewer import links
 from vote_viewer import queries
+from vote_viewer import services
+from vote_viewer import web
 from vote_viewer import create_app
+from vote_viewer.routes import overviews as overview_routes
+from vote_viewer.routes import search as search_routes
+
+
+AUTH_MANAGER = viewer.app.extensions["vote_viewer_auth"]
 
 
 class FakeResponse:
@@ -85,13 +94,13 @@ def lemmy_user_payload(username="Alice", admin=False, banned=False, deleted=Fals
 
 class VoteViewerTests(unittest.TestCase):
     def setUp(self):
-        viewer._AUTH_CACHE.clear()
+        AUTH_MANAGER.cache.clear()
         self.client = viewer.app.test_client()
 
     def request_as(self, payload, path="/"):
         self.client.set_cookie("jwt", "test-token")
         with patch.object(
-            viewer._AUTH_HTTP_OPENER,
+            AUTH_MANAGER.http_opener,
             "open",
             return_value=FakeResponse(payload),
         ):
@@ -157,21 +166,25 @@ class VoteViewerTests(unittest.TestCase):
             return "rendered"
 
         with (
-            patch.object(viewer, "db", return_value=database),
-            patch.object(viewer, "resolve_user", return_value=user),
+            patch.object(search_routes, "db", return_value=database),
+            patch.object(search_routes, "resolve_user", return_value=user),
             patch.object(
-                viewer,
+                search_routes,
                 "resolve_community",
                 return_value=(community, None),
             ),
-            patch.object(viewer, "enrich_user_vote", side_effect=dict),
-            patch.object(viewer, "enrich_item", side_effect=dict),
+            patch.object(search_routes, "enrich_user_vote", side_effect=dict),
+            patch.object(search_routes, "enrich_item", side_effect=dict),
             patch.object(
-                viewer,
+                search_routes,
                 "enrich_community_summary",
-                side_effect=lambda row, username: dict(row),
+                side_effect=lambda row, username, app_prefix: dict(row),
             ),
-            patch.object(viewer, "render_template", side_effect=capture_template),
+            patch.object(
+                search_routes,
+                "render_template",
+                side_effect=capture_template,
+            ),
         ):
             response = self.request_as(lemmy_user_payload(), path)
         return response, database, context
@@ -244,12 +257,14 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_disabled_instance_search_returns_404_before_authentication(self):
-        with patch.object(viewer, "ENABLE_DOMAIN_SEARCH", False):
+        disabled = replace(viewer.CONFIG, enable_domain_search=False)
+        with patch.object(overview_routes, "config", return_value=disabled):
             response = self.client.get("/instance/lemmy.world")
         self.assertEqual(response.status_code, 404)
 
     def test_disabled_instance_search_hides_community_overview(self):
-        with patch.object(viewer, "ENABLE_DOMAIN_SEARCH", False):
+        disabled = replace(viewer.CONFIG, enable_domain_search=False)
+        with patch.object(overview_routes, "config", return_value=disabled):
             response = self.client.get("/community/technology@lemmy.world")
         self.assertEqual(response.status_code, 404)
 
@@ -273,17 +288,17 @@ class VoteViewerTests(unittest.TestCase):
 
     def test_allowlist_is_case_insensitive_and_also_allows_admins(self):
         self.assertTrue(
-            viewer.access_requirement_met(
+            AUTH_MANAGER.access_requirement_met(
                 {"username": "dAvE", "admin": False}, "allowlist"
             )
         )
         self.assertTrue(
-            viewer.access_requirement_met(
+            AUTH_MANAGER.access_requirement_met(
                 {"username": "SomeoneElse", "admin": True}, "allowlist"
             )
         )
         self.assertFalse(
-            viewer.access_requirement_met(
+            AUTH_MANAGER.access_requirement_met(
                 {"username": "SomeoneElse", "admin": False}, "allowlist"
             )
         )
@@ -295,7 +310,7 @@ class VoteViewerTests(unittest.TestCase):
     def test_authentication_failure_returns_503(self):
         self.client.set_cookie("jwt", "test-token")
         with patch.object(
-            viewer._AUTH_HTTP_OPENER,
+            AUTH_MANAGER.http_opener,
             "open",
             side_effect=URLError("unavailable"),
         ):
@@ -306,7 +321,7 @@ class VoteViewerTests(unittest.TestCase):
     def test_authentication_result_is_cached_without_storing_token(self):
         self.client.set_cookie("jwt", "test-token")
         with patch.object(
-            viewer._AUTH_HTTP_OPENER,
+            AUTH_MANAGER.http_opener,
             "open",
             return_value=FakeResponse(lemmy_user_payload()),
         ) as mocked_urlopen:
@@ -318,7 +333,7 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(
             auth_request.get_header("Authorization"), "Bearer test-token"
         )
-        self.assertTrue(all(isinstance(key, bytes) for key in viewer._AUTH_CACHE))
+        self.assertTrue(all(isinstance(key, bytes) for key in AUTH_MANAGER.cache))
 
     def test_index_cast_view_selects_unfiltered_query_and_preserves_filters(self):
         cast, received = self.user_summaries(filtered_total=250)
@@ -331,14 +346,14 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(
             [query for query, _ in database.queries],
             [
-                viewer.USER_SUMMARY_SQL,
-                viewer.USER_RECEIVED_SUMMARY_SQL,
-                viewer.USER_VOTES_SQL,
+                queries.USER_SUMMARY_SQL,
+                queries.USER_RECEIVED_SUMMARY_SQL,
+                queries.USER_VOTES_SQL,
             ],
         )
         self.assertEqual(
             database.queries[2][1],
-            ("comment", -1, 42, 42, viewer.PAGE_SIZE, viewer.PAGE_SIZE),
+            ("comment", -1, 42, 42, viewer.CONFIG.page_size, viewer.CONFIG.page_size),
         )
         self.assertEqual(context["history_view"], "cast")
         self.assertEqual(context["content_type"], "comment")
@@ -368,10 +383,10 @@ class VoteViewerTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(database.queries[2][0], viewer.USER_VOTES_BY_COMMUNITY_SQL)
+        self.assertEqual(database.queries[2][0], queries.USER_VOTES_BY_COMMUNITY_SQL)
         self.assertEqual(
             database.queries[2][1],
-            ("all", None, 77, 42, 42, viewer.PAGE_SIZE, 0),
+            ("all", None, 77, 42, 42, viewer.CONFIG.page_size, 0),
         )
         self.assertEqual(context["community_query"], "!newzealand@lemmy.nz")
         self.assertEqual(context["community"], community)
@@ -391,11 +406,11 @@ class VoteViewerTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(
-                    database.queries[2][0], viewer.USER_RECEIVED_ITEMS_SQL
+                    database.queries[2][0], queries.USER_RECEIVED_ITEMS_SQL
                 )
                 self.assertEqual(
                     database.queries[2][1],
-                    ("post", sort_name, 42, 42, viewer.PAGE_SIZE, 0),
+                    ("post", sort_name, 42, 42, viewer.CONFIG.page_size, 0),
                 )
                 self.assertIsNone(context["score_filter"])
                 self.assertEqual(context["received_sort"], sort_name)
@@ -416,11 +431,11 @@ class VoteViewerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            database.queries[2][0], viewer.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL
+            database.queries[2][0], queries.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL
         )
         self.assertEqual(
             database.queries[2][1],
-            ("all", "bottom", 77, 42, 42, viewer.PAGE_SIZE, 0),
+            ("all", "bottom", 77, 42, 42, viewer.CONFIG.page_size, 0),
         )
         self.assertIn("view=received", context["pagination"].get("next_url", ""))
 
@@ -435,13 +450,13 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             database.queries[2][0],
-            viewer.USER_COMMUNITY_SUMMARY_SQL.format(
-                order_by=viewer.COMMUNITY_SUMMARY_SORTS["down"]
+            queries.USER_COMMUNITY_SUMMARY_SQL.format(
+                order_by=queries.COMMUNITY_SUMMARY_SORTS["down"]
             ),
         )
         self.assertEqual(
             database.queries[2][1],
-            (42, 42, 42, 42, viewer.PAGE_SIZE, viewer.PAGE_SIZE),
+            (42, 42, 42, 42, viewer.CONFIG.page_size, viewer.CONFIG.page_size),
         )
         self.assertEqual(context["content_type"], "all")
         self.assertEqual(
@@ -480,7 +495,7 @@ class VoteViewerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(context["pagination"]["page"], 2)
-        self.assertEqual(database.queries[2][1][-1], viewer.PAGE_SIZE)
+        self.assertEqual(database.queries[2][1][-1], viewer.CONFIG.page_size)
 
     def test_index_local_item_paths_redirect_without_database_lookup(self):
         for path, expected in (
@@ -488,7 +503,7 @@ class VoteViewerTests(unittest.TestCase):
             ("/?item=/comment/456", "/item/comment/456"),
         ):
             with self.subTest(path=path):
-                with patch.object(viewer, "db") as mocked_db:
+                with patch.object(web, "db") as mocked_db:
                     response = self.request_as(lemmy_user_payload(), path)
                 self.assertEqual(response.status_code, 302)
                 self.assertEqual(urlsplit(response.headers["Location"]).path, expected)
@@ -502,7 +517,7 @@ class VoteViewerTests(unittest.TestCase):
                 database = ScriptedDatabase(
                     [{"kind": kind, "item_id": item_id}]
                 )
-                with patch.object(viewer, "db", return_value=database):
+                with patch.object(web, "db", return_value=database):
                     response = self.request_as(
                         lemmy_user_payload(),
                         f"/?item={item_url}",
@@ -520,11 +535,11 @@ class VoteViewerTests(unittest.TestCase):
                 )
 
     def test_index_query_timeout_returns_503(self):
-        database = ScriptedDatabase([viewer.psycopg.errors.QueryCanceled()])
+        database = ScriptedDatabase([psycopg.errors.QueryCanceled()])
         with (
-            patch.object(viewer, "db", return_value=database),
+            patch.object(search_routes, "db", return_value=database),
             patch.object(
-                viewer,
+                search_routes,
                 "resolve_user",
                 side_effect=lambda cur, username: cur.execute("slow query"),
             ),
@@ -539,11 +554,11 @@ class VoteViewerTests(unittest.TestCase):
 
     def test_community_handle_parser_accepts_local_and_remote_handles(self):
         self.assertEqual(
-            viewer.parse_community_handle("!newzealand"),
+            links.parse_community_handle("!newzealand"),
             ("newzealand", None),
         )
         self.assertEqual(
-            viewer.parse_community_handle(" !technology@LEMMY.WORLD. "),
+            links.parse_community_handle(" !technology@LEMMY.WORLD. "),
             ("technology", "lemmy.world"),
         )
 
@@ -556,16 +571,17 @@ class VoteViewerTests(unittest.TestCase):
             "!community name",
         ):
             with self.subTest(value=value):
-                self.assertIsNone(viewer.parse_community_handle(value))
+                self.assertIsNone(links.parse_community_handle(value))
 
     def test_index_url_preserves_community_filter(self):
-        url = viewer.build_index_url(
+        url = links.build_index_url(
             "Dave@lemmy.nz",
             "comment",
             -1,
             3,
             "cast",
             community="!newzealand@lemmy.nz",
+            app_prefix=viewer.CONFIG.app_prefix,
         )
         self.assertEqual(
             parse_qs(urlsplit(url).query),
@@ -579,20 +595,21 @@ class VoteViewerTests(unittest.TestCase):
         )
 
     def test_unfiltered_history_queries_keep_community_out_of_filter_cte(self):
-        self.assertNotIn("f.community_id", viewer.USER_VOTES_SQL)
-        self.assertNotIn("f.community_id", viewer.USER_RECEIVED_ITEMS_SQL)
-        self.assertIn("f.community_id", viewer.USER_VOTES_BY_COMMUNITY_SQL)
+        self.assertNotIn("f.community_id", queries.USER_VOTES_SQL)
+        self.assertNotIn("f.community_id", queries.USER_RECEIVED_ITEMS_SQL)
+        self.assertIn("f.community_id", queries.USER_VOTES_BY_COMMUNITY_SQL)
         self.assertIn(
             "f.community_id",
-            viewer.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
+            queries.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
         )
 
     def test_community_summary_url_preserves_sort_and_page(self):
-        url = viewer.build_index_url(
+        url = links.build_index_url(
             "Dave@lemmy.nz",
             page=2,
             history_view="communities",
             community_sort="down",
+            app_prefix=viewer.CONFIG.app_prefix,
         )
         self.assertEqual(
             parse_qs(urlsplit(url).query),
@@ -605,10 +622,11 @@ class VoteViewerTests(unittest.TestCase):
         )
 
     def test_community_overview_url_preserves_sort_and_page(self):
-        url = viewer.build_community_overview_url(
+        url = links.build_community_overview_url(
             "!technology@lemmy.world",
             "down_ratio",
             2,
+            viewer.CONFIG.app_prefix,
         )
         self.assertEqual(urlsplit(url).path, "/community/technology@lemmy.world")
         self.assertEqual(
@@ -617,7 +635,7 @@ class VoteViewerTests(unittest.TestCase):
         )
 
     def test_community_user_links_to_profile_and_filtered_history(self):
-        row = viewer.enrich_community_user(
+        row = services.enrich_community_user(
             {
                 "name": "Dave",
                 "local": False,
@@ -626,6 +644,7 @@ class VoteViewerTests(unittest.TestCase):
                 "total": 10,
             },
             "!newzealand@lemmy.nz",
+            viewer.CONFIG.app_prefix,
         )
         self.assertEqual(row["profile_path"], "/u/Dave@lemmy.nz")
         self.assertEqual(row["remote_url"], "https://lemmy.nz/u/Dave")
@@ -638,14 +657,15 @@ class VoteViewerTests(unittest.TestCase):
         )
 
     def test_user_link_enrichment_separates_viewer_local_and_remote_urls(self):
-        row = viewer.enrich_instance_user(
+        row = services.enrich_instance_user(
             {
                 "name": "Dave",
                 "local": False,
                 "actor_id": "https://lemmy.nz/u/Dave",
                 "down": 2,
                 "total": 10,
-            }
+            },
+            viewer.CONFIG.app_prefix,
         )
         self.assertEqual(
             parse_qs(urlsplit(row["vote_path"]).query),
@@ -654,20 +674,21 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(row["profile_path"], "/u/Dave@lemmy.nz")
         self.assertEqual(row["remote_url"], "https://lemmy.nz/u/Dave")
 
-        local_row = viewer.enrich_instance_user(
+        local_row = services.enrich_instance_user(
             {
                 "name": "Alice",
                 "local": True,
                 "actor_id": "https://lemmy.example/u/Alice",
                 "down": 0,
                 "total": 1,
-            }
+            },
+            viewer.CONFIG.app_prefix,
         )
         self.assertEqual(local_row["profile_path"], "/u/Alice")
         self.assertIsNone(local_row["remote_url"])
 
     def test_received_item_text_and_local_links_have_separate_targets(self):
-        row = viewer.enrich_item(
+        row = services.enrich_item(
             {
                 "type": "comment",
                 "comment_id": 456,
@@ -681,7 +702,8 @@ class VoteViewerTests(unittest.TestCase):
                 "post_local": False,
                 "post_hidden": False,
                 "post_url": "https://lemmy.nz/post/123",
-            }
+            },
+            viewer.CONFIG.app_prefix,
         )
         self.assertEqual(row["item_vote_path"], "/item/comment/456")
         self.assertEqual(row["item_local_path"], "/comment/456")
@@ -712,13 +734,13 @@ class VoteViewerTests(unittest.TestCase):
 
         with viewer.app.test_request_context("/item/post/123"):
             with patch.object(
-                viewer,
+                AUTH_MANAGER,
                 "authenticated_user",
                 return_value={"username": "Alice", "admin": False},
             ):
                 regular_html = viewer.render_template("item.html", **context)
             with patch.object(
-                viewer,
+                AUTH_MANAGER,
                 "authenticated_user",
                 return_value={"username": "Admin", "admin": True},
             ):
@@ -731,13 +753,14 @@ class VoteViewerTests(unittest.TestCase):
         self.assertIn(overview_link, admin_html)
 
     def test_community_summary_links_to_cast_and_received_filters(self):
-        row = viewer.enrich_community_summary(
+        row = services.enrich_community_summary(
             {
                 "community_name": "newzealand",
                 "community_local": False,
                 "community_url": "https://lemmy.nz/c/newzealand",
             },
             "Dave@lemmy.nz",
+            viewer.CONFIG.app_prefix,
         )
         self.assertEqual(row["community_display"], "!newzealand@lemmy.nz")
         self.assertEqual(
@@ -765,13 +788,14 @@ class VoteViewerTests(unittest.TestCase):
             },
         )
 
-        local_row = viewer.enrich_community_summary(
+        local_row = services.enrich_community_summary(
             {
                 "community_name": "support",
                 "community_local": True,
                 "community_url": "https://example.com/c/support",
             },
             "Dave@lemmy.nz",
+            viewer.CONFIG.app_prefix,
         )
         self.assertEqual(local_row["community_display"], "!support")
         self.assertEqual(local_row["community_local_path"], "/c/support")
