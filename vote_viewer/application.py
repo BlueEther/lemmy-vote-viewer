@@ -13,9 +13,9 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from flask import Flask, abort, g, redirect, render_template, request
 import psycopg
-from psycopg.rows import dict_row
 
 from .config import load_config
+from .database import connect_database
 from .links import (
     actor_domain,
     build_community_overview_url as _build_community_overview_url,
@@ -209,16 +209,7 @@ def display_datetime(value):
 
 
 def db():
-    return psycopg.connect(
-        DB_DSN,
-        row_factory=dict_row,
-        connect_timeout=5,
-        options=(
-            "-c default_transaction_read_only=on "
-            "-c statement_timeout=5000 "
-            "-c idle_in_transaction_session_timeout=10000"
-        ),
-    )
+    return connect_database(DB_DSN)
 
 
 

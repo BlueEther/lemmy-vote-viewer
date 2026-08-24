@@ -1,8 +1,9 @@
 # Unit tests
 
 The unit test suite is in [`tests/test_app.py`](../tests/test_app.py) and
-[`tests/test_config.py`](../tests/test_config.py). It uses Python's
-standard-library `unittest` framework and currently contains 42 tests.
+[`tests/test_config.py`](../tests/test_config.py), and
+[`tests/test_database.py`](../tests/test_database.py). It uses Python's
+standard-library `unittest` framework and currently contains 43 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
@@ -88,6 +89,15 @@ case must retain its specific startup error.
 
 Verifies that loading configuration without `DATABASE_URL` still raises
 `KeyError` during startup.
+
+## Database connection
+
+### `test_connection_preserves_read_only_timeouts_and_row_factory`
+
+Mocks Psycopg's connection function and verifies that the extracted database
+boundary passes through the configured DSN while preserving the five-second
+connection timeout, dictionary row factory, read-only transactions, five-second
+statement timeout, and ten-second idle transaction timeout.
 
 ### `test_anonymous_search_requires_login`
 
