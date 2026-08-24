@@ -1,7 +1,7 @@
 # Unit tests
 
 The unit test suite is in [`tests/test_app.py`](../tests/test_app.py). It uses
-Python's standard-library `unittest` framework and currently contains 36 tests.
+Python's standard-library `unittest` framework and currently contains 37 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
@@ -49,6 +49,11 @@ responses are represented by `FakeResponse` and the application's HTTP opener
 is mocked, so the suite does not contact a Lemmy server or the network.
 
 ## Authentication and authorization
+
+### `test_factory_preserves_app_compatibility_entrypoint`
+
+Verifies that the package application factory and the root `app:app`
+compatibility entry point expose the same configured Flask application.
 
 ### `test_anonymous_search_requires_login`
 

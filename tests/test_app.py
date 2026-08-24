@@ -19,7 +19,9 @@ os.environ["AUTH_ALLOWED_USERS"] = "Dave,BlueEther"
 os.environ["AUTH_CACHE_SECONDS"] = "60"
 os.environ["ENABLE_DOMAIN_SEARCH"] = "true"
 
-import app as viewer
+import app as compatibility_entrypoint
+from vote_viewer import application as viewer
+from vote_viewer import create_app
 
 
 class FakeResponse:
@@ -92,6 +94,10 @@ class VoteViewerTests(unittest.TestCase):
             return_value=FakeResponse(payload),
         ):
             return self.client.get(path)
+
+    def test_factory_preserves_app_compatibility_entrypoint(self):
+        self.assertIs(create_app(), viewer.app)
+        self.assertIs(compatibility_entrypoint.app, viewer.app)
 
     def request_index(self, path, results, community=None):
         database = ScriptedDatabase(results)

@@ -21,6 +21,7 @@ RUN groupadd --gid 10001 voteviewer \
        voteviewer
 
 COPY --chown=voteviewer:voteviewer app.py .
+COPY --chown=voteviewer:voteviewer vote_viewer ./vote_viewer
 COPY --chown=voteviewer:voteviewer VERSION .
 COPY --chown=voteviewer:voteviewer templates ./templates
 COPY --chown=voteviewer:voteviewer static ./static

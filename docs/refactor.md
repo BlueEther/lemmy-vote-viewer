@@ -237,6 +237,10 @@ Use one behavior-preserving commit for each completed extraction step. Each
 commit must compile and pass the unit suite so it can be reviewed or reverted
 independently.
 
+Use sequential `0.9.x` versions for the migration checkpoints. Bump the
+completed refactored application to `0.10.0` once all completion criteria are
+met.
+
 Suggested commit progression:
 
 1. Add `index()` characterization tests.
@@ -257,7 +261,7 @@ the versioning guidance in [`releasing.md`](releasing.md).
 ## Completion criteria
 
 - [x] Characterization tests cover the major `index()` branches.
-- [ ] Production still starts through `app:app`.
+- [x] Production still starts through `app:app`.
 - [ ] Imports follow the documented dependency direction.
 - [ ] No circular imports or unnecessary compatibility re-exports remain.
 - [ ] All unit tests pass.
