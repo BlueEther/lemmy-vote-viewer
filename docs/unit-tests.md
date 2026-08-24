@@ -1,9 +1,10 @@
 # Unit tests
 
-The unit test suite is in [`tests/test_app.py`](../tests/test_app.py) and
+The unit test suite is in [`tests/test_app.py`](../tests/test_app.py),
+[`tests/test_auth.py`](../tests/test_auth.py),
 [`tests/test_config.py`](../tests/test_config.py), and
 [`tests/test_database.py`](../tests/test_database.py). It uses Python's
-standard-library `unittest` framework and currently contains 43 tests.
+standard-library `unittest` framework and currently contains 46 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
@@ -182,6 +183,22 @@ performed only once. It also checks that the request targets the configured
 internal Lemmy `/api/v3/site` endpoint, sends the JWT as a bearer token, and
 stores only hashed byte keys in the authentication cache rather than the raw
 token.
+
+### `test_authentication_redirects_remain_disabled`
+
+Verifies that the authentication HTTP redirect handler refuses redirects rather
+than allowing a configured internal Lemmy request to leave its expected origin.
+
+### `test_authentication_cache_remains_bounded`
+
+Adds one more entry than the authentication cache limit and verifies that the
+cache remains at 1,024 entries and evicts the oldest entry.
+
+### `test_oversized_authentication_response_is_rejected`
+
+Supplies an authentication response one byte beyond the one-megabyte limit and
+verifies that token validation reports the authentication service as
+unavailable.
 
 ## Search-route characterization
 
