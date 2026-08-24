@@ -4,7 +4,7 @@ The unit test suite is in [`tests/test_app.py`](../tests/test_app.py),
 [`tests/test_auth.py`](../tests/test_auth.py),
 [`tests/test_config.py`](../tests/test_config.py), and
 [`tests/test_database.py`](../tests/test_database.py). It uses Python's
-standard-library `unittest` framework and currently contains 46 tests.
+standard-library `unittest` framework and currently contains 49 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
@@ -54,10 +54,11 @@ is mocked, so the suite does not contact a Lemmy server or the network.
 
 ## Authentication and authorization
 
-### `test_factory_preserves_app_compatibility_entrypoint`
+### `test_root_exports_only_app_compatibility_entrypoint`
 
-Verifies that the package application factory and the root `app:app`
-compatibility entry point expose the same configured Flask application.
+Verifies that the root `app:app` compatibility entry point exposes the
+configured Flask application without also exporting the package's
+`create_app` helper.
 
 ### `test_pure_link_helpers_use_explicit_configuration`
 
@@ -83,8 +84,9 @@ public/internal URL derivation.
 ### `test_invalid_settings_raise_the_existing_startup_errors`
 
 Checks invalid booleans, timezones, authentication providers and requirements,
-provider/requirement mismatches, and missing Lemmy authentication URLs. Each
-case must retain its specific startup error.
+provider/requirement mismatches, missing Lemmy authentication URLs, malformed
+ports, and Lemmy URLs containing paths or queries. Each case must retain its
+specific startup error.
 
 ### `test_database_url_remains_required`
 
@@ -109,6 +111,25 @@ Requests the search page without a JWT cookie and verifies that it returns HTTP
 
 Requests both a post-voter route and a comment-voter route anonymously. It
 verifies that both return HTTP 401 before attempting database access.
+
+### `test_item_routes_select_queries_and_preserve_pagination`
+
+Exercises successful post and comment voter pages. It verifies the selected
+item, summary, and voter SQL constants, exact item ID, limit and offset
+parameters, rendered item type, and second-page state.
+
+### `test_instance_overview_selects_sort_timeout_and_page`
+
+Exercises a successful administrator-only instance overview. It verifies
+domain normalization, controlled sort interpolation, the per-query statement
+timeout override, exact page bounds, and rendered pagination state.
+
+### `test_community_overview_selects_sort_timeout_and_page`
+
+Exercises a successful administrator-only community overview. It verifies
+controlled sort interpolation, the statement timeout override, exact community
+and page parameters, local and remote community links, and rendered pagination
+state.
 
 ### `test_logged_in_user_can_search_but_cannot_see_instance_search`
 

@@ -48,8 +48,8 @@ class ConfigTests(unittest.TestCase):
             AUTH_COOKIE_NAME=" ",
             AUTH_CACHE_SECONDS="-5",
             AUTH_TIMEOUT_SECONDS="99",
-            LEMMY_BASE_URL="HTTPS://Lemmy.Example/path",
-            LEMMY_INTERNAL_URL="http://lemmy:8536/api",
+            LEMMY_BASE_URL="HTTPS://Lemmy.Example/",
+            LEMMY_INTERNAL_URL="http://lemmy:8536/",
             ENABLE_DOMAIN_SEARCH="TRUE",
         )
 
@@ -82,6 +82,18 @@ class ConfigTests(unittest.TestCase):
             (
                 {"AUTH_PROVIDER": "lemmy"},
                 "LEMMY_INTERNAL_URL or LEMMY_BASE_URL is required",
+            ),
+            (
+                {"LEMMY_BASE_URL": "https://example.com/path"},
+                "LEMMY_BASE_URL must be an HTTP",
+            ),
+            (
+                {"LEMMY_BASE_URL": "https://example.com:bad"},
+                "LEMMY_BASE_URL must be an HTTP",
+            ),
+            (
+                {"LEMMY_INTERNAL_URL": "https://example.com/?token=value"},
+                "LEMMY_INTERNAL_URL must be an HTTP",
             ),
         )
         for overrides, message in invalid_settings:

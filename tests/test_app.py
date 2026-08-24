@@ -27,7 +27,7 @@ from vote_viewer import links
 from vote_viewer import queries
 from vote_viewer import services
 from vote_viewer import web
-from vote_viewer import create_app
+from vote_viewer.routes import items as item_routes
 from vote_viewer.routes import overviews as overview_routes
 from vote_viewer.routes import search as search_routes
 
@@ -106,9 +106,9 @@ class VoteViewerTests(unittest.TestCase):
         ):
             return self.client.get(path)
 
-    def test_factory_preserves_app_compatibility_entrypoint(self):
-        self.assertIs(create_app(), viewer.app)
+    def test_root_exports_only_app_compatibility_entrypoint(self):
         self.assertIs(compatibility_entrypoint.app, viewer.app)
+        self.assertFalse(hasattr(compatibility_entrypoint, "create_app"))
         self.assertIs(
             viewer.app.config["VOTE_VIEWER_CONFIG"], viewer.CONFIG
         )
@@ -225,6 +225,228 @@ class VoteViewerTests(unittest.TestCase):
     def test_anonymous_item_routes_require_login_before_database_access(self):
         self.assertEqual(self.client.get("/item/post/1").status_code, 401)
         self.assertEqual(self.client.get("/item/comment/1").status_code, 401)
+
+    def test_item_routes_select_queries_and_preserve_pagination(self):
+        cases = (
+            (
+                "post",
+                "/item/post/123?page=2",
+                queries.POST_ITEM_SQL,
+                queries.POST_VOTER_SUMMARY_SQL,
+                queries.POST_VOTERS_SQL,
+            ),
+            (
+                "comment",
+                "/item/comment/456?page=2",
+                queries.COMMENT_ITEM_SQL,
+                queries.COMMENT_VOTER_SUMMARY_SQL,
+                queries.COMMENT_VOTERS_SQL,
+            ),
+        )
+        for kind, path, item_sql, summary_sql, voters_sql in cases:
+            with self.subTest(kind=kind):
+                item_id = 123 if kind == "post" else 456
+                database = ScriptedDatabase(
+                    [
+                        {"item_id": item_id},
+                        {"total": 150, "up": 100, "down": 50, "neutral": 0},
+                        [{"voter_name": "Alice"}],
+                    ]
+                )
+                context = {}
+
+                def capture_template(template_name, **values):
+                    context["template_name"] = template_name
+                    context.update(values)
+                    return "rendered"
+
+                with (
+                    patch.object(item_routes, "db", return_value=database),
+                    patch.object(
+                        item_routes,
+                        "enrich_item",
+                        side_effect=lambda row, app_prefix: dict(row),
+                    ),
+                    patch.object(
+                        item_routes,
+                        "enrich_voter",
+                        side_effect=lambda row, app_prefix: dict(row),
+                    ),
+                    patch.object(
+                        item_routes,
+                        "render_template",
+                        side_effect=capture_template,
+                    ),
+                ):
+                    response = self.request_as(lemmy_user_payload(), path)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    database.queries,
+                    [
+                        (item_sql, (item_id,)),
+                        (summary_sql, (item_id,)),
+                        (
+                            voters_sql,
+                            (
+                                item_id,
+                                viewer.CONFIG.page_size,
+                                viewer.CONFIG.page_size,
+                            ),
+                        ),
+                    ],
+                )
+                self.assertEqual(context["template_name"], "item.html")
+                self.assertEqual(context["kind"], kind)
+                self.assertEqual(context["item_id"], item_id)
+                self.assertEqual(context["pagination"]["page"], 2)
+
+    def test_instance_overview_selects_sort_timeout_and_page(self):
+        overview = {
+            "known_users": 500,
+            "voting_users": 150,
+            "summary_total": 300,
+            "summary_up": 250,
+            "summary_down": 50,
+            "summary_neutral": 0,
+            "id": 42,
+        }
+        database = ScriptedDatabase(
+            [
+                {"id": 9, "domain": "lemmy.nz"},
+                None,
+                [overview],
+            ]
+        )
+        context = {}
+
+        def capture_template(template_name, **values):
+            context["template_name"] = template_name
+            context.update(values)
+            return "rendered"
+
+        with (
+            patch.object(overview_routes, "db", return_value=database),
+            patch.object(
+                overview_routes,
+                "enrich_instance_user",
+                side_effect=lambda row, app_prefix: dict(row),
+            ),
+            patch.object(
+                overview_routes,
+                "render_template",
+                side_effect=capture_template,
+            ),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/instance/LEMMY.NZ.?sort=down&page=2",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            database.queries,
+            [
+                (queries.INSTANCE_LOOKUP_SQL, ("lemmy.nz",)),
+                (
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    (f"{viewer.CONFIG.instance_query_timeout_seconds}s",),
+                ),
+                (
+                    queries.INSTANCE_OVERVIEW_SQL.format(
+                        order_by=queries.INSTANCE_SORTS["down"],
+                        vote_window_days=viewer.CONFIG.instance_vote_window_days,
+                    ),
+                    (9, viewer.CONFIG.page_size, viewer.CONFIG.page_size * 2),
+                ),
+            ],
+        )
+        self.assertEqual(context["template_name"], "instance.html")
+        self.assertEqual(context["domain"], "lemmy.nz")
+        self.assertEqual(context["sort"], "down")
+        self.assertEqual(context["pagination"]["page"], 2)
+
+    def test_community_overview_selects_sort_timeout_and_page(self):
+        community = {
+            "id": 77,
+            "name": "newzealand",
+            "title": "New Zealand",
+            "local": False,
+            "actor_id": "https://lemmy.nz/c/newzealand",
+            "handle": "!newzealand@lemmy.nz",
+        }
+        overview = {
+            "voting_users": 150,
+            "summary_total": 300,
+            "summary_up": 250,
+            "summary_down": 50,
+            "summary_neutral": 0,
+            "id": 42,
+        }
+        database = ScriptedDatabase([None, [overview]])
+        context = {}
+
+        def capture_template(template_name, **values):
+            context["template_name"] = template_name
+            context.update(values)
+            return "rendered"
+
+        with (
+            patch.object(overview_routes, "db", return_value=database),
+            patch.object(
+                overview_routes,
+                "resolve_community",
+                return_value=(community, None),
+            ),
+            patch.object(
+                overview_routes,
+                "enrich_community_user",
+                side_effect=lambda row, handle, app_prefix: dict(row),
+            ),
+            patch.object(
+                overview_routes,
+                "render_template",
+                side_effect=capture_template,
+            ),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/community/newzealand@lemmy.nz?sort=recent&page=2",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            database.queries,
+            [
+                (
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    (f"{viewer.CONFIG.instance_query_timeout_seconds}s",),
+                ),
+                (
+                    queries.COMMUNITY_OVERVIEW_SQL.format(
+                        order_by=queries.COMMUNITY_OVERVIEW_SORTS["recent"],
+                        vote_window_days=viewer.CONFIG.instance_vote_window_days,
+                    ),
+                    (
+                        77,
+                        77,
+                        viewer.CONFIG.page_size,
+                        viewer.CONFIG.page_size * 2,
+                    ),
+                ),
+            ],
+        )
+        self.assertEqual(context["template_name"], "community.html")
+        self.assertEqual(
+            context["community"]["local_path"],
+            "/c/newzealand@lemmy.nz",
+        )
+        self.assertEqual(
+            context["community"]["remote_url"],
+            "https://lemmy.nz/c/newzealand",
+        )
+        self.assertEqual(context["sort"], "recent")
+        self.assertEqual(context["pagination"]["page"], 2)
 
     def test_logged_in_user_can_search_but_cannot_see_instance_search(self):
         response = self.request_as(lemmy_user_payload())

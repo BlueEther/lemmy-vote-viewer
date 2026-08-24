@@ -1,9 +1,7 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from vote_viewer import create_app
-
-app = create_app()
+from vote_viewer import app
 
 
 if __name__ == "__main__":

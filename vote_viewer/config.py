@@ -68,11 +68,15 @@ def lemmy_instance_config(value):
         return None, None
     try:
         parsed = urlsplit(value.strip())
+        _ = parsed.port
         if (
             parsed.scheme.lower() not in ("http", "https")
             or not parsed.netloc
             or parsed.username
             or parsed.password
+            or parsed.path not in ("", "/")
+            or parsed.query
+            or parsed.fragment
         ):
             return None, None
         base_url = f"{parsed.scheme.lower()}://{parsed.netloc}"
@@ -134,9 +138,15 @@ def load_config(environ=None, project_root=None):
     except (ValueError, ZoneInfoNotFoundError) as exc:
         raise RuntimeError(f"Invalid TIMEZONE: {timezone_name}") from exc
 
+    raw_lemmy_base_url = environ.get("LEMMY_BASE_URL", "").strip()
     lemmy_base_url, lemmy_instance = lemmy_instance_config(
-        environ.get("LEMMY_BASE_URL", "")
+        raw_lemmy_base_url
     )
+    if raw_lemmy_base_url and not lemmy_base_url:
+        raise RuntimeError(
+            "LEMMY_BASE_URL must be an HTTP(S) origin without credentials, "
+            "a path, query, or fragment"
+        )
 
     auth_provider = environ.get("AUTH_PROVIDER", "none").strip().lower()
     if auth_provider not in ("none", "lemmy"):
@@ -173,6 +183,11 @@ def load_config(environ=None, project_root=None):
     lemmy_internal_url, _ = lemmy_instance_config(
         auth_internal_url or lemmy_base_url or ""
     )
+    if auth_internal_url and not lemmy_internal_url:
+        raise RuntimeError(
+            "LEMMY_INTERNAL_URL must be an HTTP(S) origin without credentials, "
+            "a path, query, or fragment"
+        )
     if auth_provider == "lemmy" and not lemmy_internal_url:
         raise RuntimeError(
             "LEMMY_INTERNAL_URL or LEMMY_BASE_URL is required for Lemmy "
