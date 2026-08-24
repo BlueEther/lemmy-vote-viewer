@@ -102,7 +102,9 @@ Startup intentionally fails for some invalid values. Common examples include:
 - `AUTH_PROVIDER` must be `none` or `lemmy`;
 - authentication requirements must be `none`, `login`, `allowlist`, or
   `admin`;
-- protected routes require `AUTH_PROVIDER=lemmy`; and
+- protected routes require `AUTH_PROVIDER=lemmy`;
+- Lemmy public and internal URLs must be HTTP(S) origins with a valid numeric
+  port and no credentials, path, query, or fragment; and
 - `TIMEZONE` must be a valid IANA timezone such as `Pacific/Auckland`.
 
 Correct `.env`, then recreate the container. A restart does not reload changed

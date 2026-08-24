@@ -113,7 +113,7 @@ At minimum, run whitespace, compilation, and unit-test checks:
 
 ```sh
 git diff --check
-python3 -m py_compile app.py
+python3 -m py_compile app.py vote_viewer/*.py
 python3 -m unittest discover -s tests -v
 ```
 

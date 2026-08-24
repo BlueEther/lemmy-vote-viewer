@@ -234,6 +234,8 @@ cp .env.example .env
 - `LEMMY_INTERNAL_URL` is the URL the viewer uses to validate Lemmy sessions.
   Prefer the internal Lemmy backend URL, such as `http://lemmy:8536`, rather
   than routing authentication requests back through the public proxy.
+  Both Lemmy URLs must be HTTP(S) origins with a valid numeric port and no
+  credentials, path, query, or fragment. A single trailing slash is accepted.
 - `TIMEZONE` controls the timezone used for displayed vote timestamps. Use an
   IANA timezone name such as `Pacific/Auckland`; it defaults to `UTC`.
 

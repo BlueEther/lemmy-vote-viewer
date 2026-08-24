@@ -1,0 +1,97 @@
+# Copyright (C) 2026 BlueEther@no.lastname.nz
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+from flask import Blueprint, abort, render_template
+
+from ..queries import (
+    COMMENT_ITEM_SQL,
+    COMMENT_VOTERS_SQL,
+    COMMENT_VOTER_SUMMARY_SQL,
+    POST_ITEM_SQL,
+    POST_VOTERS_SQL,
+    POST_VOTER_SUMMARY_SQL,
+)
+from ..services import enrich_item, enrich_voter
+from ..web import (
+    build_item_url,
+    config,
+    db,
+    make_pagination,
+    parse_page,
+    require_access,
+)
+
+
+blueprint = Blueprint("items", __name__)
+
+
+def item_votes(kind, item_id):
+    requested_page = parse_page()
+    if kind == "post":
+        item_sql, summary_sql, voters_sql = (
+            POST_ITEM_SQL,
+            POST_VOTER_SUMMARY_SQL,
+            POST_VOTERS_SQL,
+        )
+    elif kind == "comment":
+        item_sql, summary_sql, voters_sql = (
+            COMMENT_ITEM_SQL,
+            COMMENT_VOTER_SUMMARY_SQL,
+            COMMENT_VOTERS_SQL,
+        )
+    else:
+        abort(404)
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(item_sql, (item_id,))
+            item = cur.fetchone()
+            if not item:
+                abort(404)
+            item = enrich_item(item, config().app_prefix)
+
+            cur.execute(summary_sql, (item_id,))
+            summary = cur.fetchone()
+            pagination = make_pagination(summary["total"], requested_page)
+
+            cur.execute(
+                voters_sql,
+                (item_id, config().page_size, pagination["offset"]),
+            )
+            rows = [
+                enrich_voter(row, config().app_prefix)
+                for row in cur.fetchall()
+            ]
+
+    if pagination["has_prev"]:
+        pagination["prev_url"] = build_item_url(
+            kind, item_id, pagination["prev_page"]
+        )
+    if pagination["has_next"]:
+        pagination["next_url"] = build_item_url(
+            kind, item_id, pagination["next_page"]
+        )
+
+    return render_template(
+        "item.html",
+        kind=kind,
+        item_id=item_id,
+        item=item,
+        rows=rows,
+        summary=summary,
+        pagination=pagination,
+    )
+
+
+
+@blueprint.route("/item/post/<int:item_id>")
+@require_access("auth_search_require")
+def post_votes(item_id):
+    return item_votes("post", item_id)
+
+
+
+@blueprint.route("/item/comment/<int:item_id>")
+@require_access("auth_search_require")
+def comment_votes(item_id):
+    return item_votes("comment", item_id)

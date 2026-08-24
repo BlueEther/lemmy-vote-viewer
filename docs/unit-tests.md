@@ -1,11 +1,15 @@
 # Unit tests
 
-The unit test suite is in [`tests/test_app.py`](../tests/test_app.py). It uses
-Python's standard-library `unittest` framework and currently contains 26 tests.
+The unit test suite is in [`tests/test_app.py`](../tests/test_app.py),
+[`tests/test_auth.py`](../tests/test_auth.py),
+[`tests/test_config.py`](../tests/test_config.py), and
+[`tests/test_database.py`](../tests/test_database.py). It uses Python's
+standard-library `unittest` framework and currently contains 49 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
-behavior.
+behavior. Configuration tests separately cover environment defaults,
+normalization, bounds, and startup validation.
 
 ## Running the tests
 
@@ -41,12 +45,62 @@ independent of a developer's `.env` file and the application's default `/votes`
 prefix.
 
 The database URL deliberately points to an unused database because these tests
-do not require a live PostgreSQL connection. Each test clears the in-memory
-authentication cache and creates a fresh Flask test client. Lemmy API responses
-are represented by `FakeResponse` and the application's HTTP opener is mocked,
-so the suite does not contact a Lemmy server or the network.
+do not require a live PostgreSQL connection. Request-level query tests use
+`ScriptedDatabase`, a small database double that supplies predetermined rows
+and records SQL and parameters for later assertions. Each test clears the
+in-memory authentication cache and creates a fresh Flask test client. Lemmy API
+responses are represented by `FakeResponse` and the application's HTTP opener
+is mocked, so the suite does not contact a Lemmy server or the network.
 
 ## Authentication and authorization
+
+### `test_root_exports_only_app_compatibility_entrypoint`
+
+Verifies that the root `app:app` compatibility entry point exposes the
+configured Flask application without also exporting the package's
+`create_app` helper.
+
+### `test_pure_link_helpers_use_explicit_configuration`
+
+Verifies that the extracted pure link helpers accept the application prefix,
+Lemmy base URL, and page size explicitly. It checks prefixed URL generation,
+local item recognition, and pagination without Flask request or application
+configuration imports.
+
+## Configuration
+
+### `test_defaults_are_preserved`
+
+Loads configuration from only the required database setting and verifies the
+existing prefix, page size, query timeout, vote window, timezone, feature flag,
+authentication, cookie, cache, request-timeout, and Lemmy URL defaults.
+
+### `test_values_are_normalized_bounded_and_fallback_on_bad_numbers`
+
+Verifies prefix and URL normalization, case-insensitive booleans and allowed
+users, numeric minimum and maximum bounds, invalid-number fallbacks, and Lemmy
+public/internal URL derivation.
+
+### `test_invalid_settings_raise_the_existing_startup_errors`
+
+Checks invalid booleans, timezones, authentication providers and requirements,
+provider/requirement mismatches, missing Lemmy authentication URLs, malformed
+ports, and Lemmy URLs containing paths or queries. Each case must retain its
+specific startup error.
+
+### `test_database_url_remains_required`
+
+Verifies that loading configuration without `DATABASE_URL` still raises
+`KeyError` during startup.
+
+## Database connection
+
+### `test_connection_preserves_read_only_timeouts_and_row_factory`
+
+Mocks Psycopg's connection function and verifies that the extracted database
+boundary passes through the configured DSN while preserving the five-second
+connection timeout, dictionary row factory, read-only transactions, five-second
+statement timeout, and ten-second idle transaction timeout.
 
 ### `test_anonymous_search_requires_login`
 
@@ -57,6 +111,25 @@ Requests the search page without a JWT cookie and verifies that it returns HTTP
 
 Requests both a post-voter route and a comment-voter route anonymously. It
 verifies that both return HTTP 401 before attempting database access.
+
+### `test_item_routes_select_queries_and_preserve_pagination`
+
+Exercises successful post and comment voter pages. It verifies the selected
+item, summary, and voter SQL constants, exact item ID, limit and offset
+parameters, rendered item type, and second-page state.
+
+### `test_instance_overview_selects_sort_timeout_and_page`
+
+Exercises a successful administrator-only instance overview. It verifies
+domain normalization, controlled sort interpolation, the per-query statement
+timeout override, exact page bounds, and rendered pagination state.
+
+### `test_community_overview_selects_sort_timeout_and_page`
+
+Exercises a successful administrator-only community overview. It verifies
+controlled sort interpolation, the statement timeout override, exact community
+and page parameters, local and remote community links, and rendered pagination
+state.
 
 ### `test_logged_in_user_can_search_but_cannot_see_instance_search`
 
@@ -131,6 +204,87 @@ performed only once. It also checks that the request targets the configured
 internal Lemmy `/api/v3/site` endpoint, sends the JWT as a bearer token, and
 stores only hashed byte keys in the authentication cache rather than the raw
 token.
+
+### `test_authentication_redirects_remain_disabled`
+
+Verifies that the authentication HTTP redirect handler refuses redirects rather
+than allowing a configured internal Lemmy request to leave its expected origin.
+
+### `test_authentication_cache_remains_bounded`
+
+Adds one more entry than the authentication cache limit and verifies that the
+cache remains at 1,024 entries and evicts the oldest entry.
+
+### `test_oversized_authentication_response_is_rejected`
+
+Supplies an authentication response one byte beyond the one-megabyte limit and
+verifies that token validation reports the authentication service as
+unavailable.
+
+## Search-route characterization
+
+These request-level tests lock in the observable behavior of the large
+`index()` route before it is split into smaller modules.
+
+### `test_index_cast_view_selects_unfiltered_query_and_preserves_filters`
+
+Requests the second page of a user's comment downvotes. It verifies selection
+of the cheaper unfiltered cast-history query, its exact parameters, the
+rendered filter state, and preservation of the user, type, score, and page in
+the next-page URL.
+
+### `test_index_cast_view_selects_community_filtered_query`
+
+Requests cast history within a resolved community and verifies selection of
+the community-filtered query, including the community ID in its parameters and
+the canonical community handle in the rendered state.
+
+### `test_index_received_view_selects_sort_and_ignores_score`
+
+Exercises date, top, and bottom sorting for received votes. It verifies the
+selected unfiltered received-items query and parameters and confirms that a
+cast-vote score filter is discarded in received mode.
+
+### `test_index_received_view_selects_community_filtered_query`
+
+Requests bottom-sorted received votes within a community. It verifies selection
+of the community-filtered received-items query, its parameters, and preservation
+of received mode in pagination.
+
+### `test_index_community_view_selects_sort_and_preserves_pagination`
+
+Requests the second page of downvote-sorted community summaries. It verifies
+the controlled SQL sort expression, exact pagination parameters, forced `all`
+content type, and preservation of the community-summary view and sort order in
+the next-page URL.
+
+### `test_index_empty_deep_community_page_redirects_to_first_page`
+
+Requests an empty community-summary page beyond the available results and
+verifies the redirect to the first page while retaining the username, view,
+and sort order.
+
+### `test_index_cast_page_is_clamped_to_available_results`
+
+Requests an extremely large cast-history page number and verifies that the
+rendered page and SQL offset are clamped to the final available page.
+
+### `test_index_local_item_paths_redirect_without_database_lookup`
+
+Exercises both `/post/123` and `/comment/456` search input. It verifies direct
+redirects to the corresponding viewer pages without opening the database.
+
+### `test_index_activitypub_item_url_uses_lookup_and_redirects`
+
+Exercises remote post and comment ActivityPub URLs. It verifies use of the
+public-item lookup query with both trailing-slash variants and redirects to the
+resolved viewer item pages.
+
+### `test_index_query_timeout_returns_503`
+
+Makes the database boundary raise PostgreSQL's query-cancellation exception
+during a user search and verifies that the request returns HTTP 503 with the
+specific timeout message.
 
 ## Community parsing and URL state
 

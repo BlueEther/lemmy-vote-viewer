@@ -24,6 +24,7 @@ vote_viewer/
     links.py                 # Handles, paths, URLs, and parsing
     queries.py               # SQL constants and controlled sort expressions
     services.py              # Resolution and row-enrichment operations
+    web.py                   # Request-aware adapters for routes
     routes/
         __init__.py          # Blueprint registration
         search.py            # User, item, instance, and community search entry
@@ -54,6 +55,8 @@ config
 database, links, queries
   ↓
 auth, services
+  ↓
+web
   ↓
 routes
   ↓
@@ -237,6 +240,10 @@ Use one behavior-preserving commit for each completed extraction step. Each
 commit must compile and pass the unit suite so it can be reviewed or reverted
 independently.
 
+Use sequential `0.9.x` versions for the migration checkpoints. Bump the
+completed refactored application to `0.10.0` once all completion criteria are
+met.
+
 Suggested commit progression:
 
 1. Add `index()` characterization tests.
@@ -256,12 +263,12 @@ the versioning guidance in [`releasing.md`](releasing.md).
 
 ## Completion criteria
 
-- [ ] Characterization tests cover the major `index()` branches.
-- [ ] Production still starts through `app:app`.
-- [ ] Imports follow the documented dependency direction.
-- [ ] No circular imports or unnecessary compatibility re-exports remain.
-- [ ] All unit tests pass.
-- [ ] Local copied-database smoke tests pass.
+- [x] Characterization tests cover the major `index()` branches.
+- [x] Production still starts through `app:app`.
+- [x] Imports follow the documented dependency direction.
+- [x] No circular imports or unnecessary compatibility re-exports remain.
+- [x] All unit tests pass.
+- [x] Local copied-database smoke tests pass.
 - [ ] Authentication behavior is verified for anonymous, normal, allowlisted,
   and administrator accounts where configured.
 - [ ] Root and prefixed deployments generate correct links.
