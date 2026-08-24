@@ -1,7 +1,7 @@
 # Unit tests
 
 The unit test suite is in [`tests/test_app.py`](../tests/test_app.py). It uses
-Python's standard-library `unittest` framework and currently contains 37 tests.
+Python's standard-library `unittest` framework and currently contains 38 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
@@ -54,6 +54,13 @@ is mocked, so the suite does not contact a Lemmy server or the network.
 
 Verifies that the package application factory and the root `app:app`
 compatibility entry point expose the same configured Flask application.
+
+### `test_pure_link_helpers_use_explicit_configuration`
+
+Verifies that the extracted pure link helpers accept the application prefix,
+Lemmy base URL, and page size explicitly. It checks prefixed URL generation,
+local item recognition, and pagination without Flask request or application
+configuration imports.
 
 ### `test_anonymous_search_requires_login`
 

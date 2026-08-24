@@ -26,6 +26,7 @@ and documentation corrections can normally proceed directly to a pull request.
 | `app.py` | Gunicorn compatibility entry point |
 | `vote_viewer/application.py` | Flask application, routes, authentication, parsing, enrichment, and view context during the refactor |
 | `vote_viewer/queries.py` | SQL constants, query templates, and controlled sort expressions |
+| `vote_viewer/links.py` | Pure handle, URL, parsing, and pagination helpers |
 | `templates/` | Jinja HTML templates and shared footer |
 | `static/style.css` | Responsive presentation |
 | `tests/test_app.py` | Isolated `unittest` suite |

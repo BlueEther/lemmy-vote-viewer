@@ -3,15 +3,13 @@
 
 import hashlib
 import json
-import math
 import os
-import re
 import threading
 import time
 from datetime import timezone
 from functools import wraps
 from pathlib import Path
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -20,15 +18,33 @@ from flask import Flask, abort, g, redirect, render_template, request
 import psycopg
 from psycopg.rows import dict_row
 
+from .links import (
+    actor_domain,
+    build_community_overview_url as _build_community_overview_url,
+    build_index_url as _build_index_url,
+    build_instance_url as _build_instance_url,
+    build_item_url as _build_item_url,
+    like_prefix_pattern,
+    local_community_path,
+    local_profile_path,
+    make_handle,
+    make_pagination as _make_pagination,
+    normalize_instance_domain,
+    parse_community_handle,
+    parse_item_search as _parse_item_search,
+    parse_page as _parse_page,
+    parse_user_suggestion_input,
+    remote_profile_url,
+    safe_http_url,
+    vote_history_path as _vote_history_path,
+)
 from .queries import (
     COMMUNITY_LOOKUP_SQL,
     USER_SUGGESTIONS_SQL,
-    USER_VOTES_SQL_TEMPLATE,
     USER_VOTES_SQL,
     USER_VOTES_BY_COMMUNITY_SQL,
     USER_SUMMARY_SQL,
     USER_RECEIVED_SUMMARY_SQL,
-    USER_RECEIVED_ITEMS_SQL_TEMPLATE,
     USER_RECEIVED_ITEMS_SQL,
     USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
     COMMUNITY_SUMMARY_SORTS,
@@ -235,16 +251,6 @@ def db():
     )
 
 
-def safe_http_url(value):
-    if not value:
-        return None
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        return None
-    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
-        return None
-    return value
 
 
 def lemmy_instance_config(value):
@@ -489,127 +495,16 @@ def require_access(requirement):
     return decorator
 
 
-def actor_domain(actor_id):
-    url = safe_http_url(actor_id)
-    if not url:
-        return None
-    try:
-        return (urlsplit(url).hostname or "").lower().rstrip(".") or None
-    except ValueError:
-        return None
-
-
-def make_handle(name, local, actor_id):
-    if not name:
-        return None
-    if local:
-        return name
-    domain = actor_domain(actor_id)
-    return f"{name}@{domain}" if domain else name
-
-
-def local_profile_path(handle):
-    if not handle:
-        return None
-    return "/u/" + quote(handle, safe="@._~-")
-
-
-def remote_profile_url(local, actor_id):
-    if local:
-        return None
-    return safe_http_url(actor_id)
-
-
-def local_community_path(handle):
-    if not handle:
-        return None
-    return "/c/" + quote(handle.removeprefix("!"), safe="@._~-")
-
-
-LOCAL_ITEM_PATH = re.compile(r"^/(post|comment)/(\d+)/?$")
-
-
-def parse_local_item_path(path):
-    match = LOCAL_ITEM_PATH.fullmatch(path)
-    if not match:
-        return None
-    item_id = int(match.group(2))
-    return (match.group(1), item_id) if item_id > 0 else None
-
-
-def url_origin(parsed):
-    try:
-        port = parsed.port
-    except ValueError:
-        return None
-    scheme = parsed.scheme.lower()
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if not host:
-        return None
-    default_port = 80 if scheme == "http" else 443 if scheme == "https" else None
-    return scheme, host, port or default_port
-
-
 def parse_item_search(value):
-    value = value.strip()
-    if not value:
-        return None
-
-    if value.startswith("/"):
-        parsed = urlsplit(value)
-        if parsed.scheme or parsed.netloc:
-            return None
-        local_item = parse_local_item_path(parsed.path)
-        return {"local_item": local_item} if local_item else None
-
-    url = safe_http_url(value)
-    if not url:
-        return None
-    try:
-        parsed = urlsplit(url)
-        if parsed.username or parsed.password or url_origin(parsed) is None:
-            return None
-    except ValueError:
-        return None
-
-    clean_url = urlunsplit(
-        (parsed.scheme.lower(), parsed.netloc, parsed.path, parsed.query, "")
-    )
-    alternate_url = clean_url[:-1] if clean_url.endswith("/") else clean_url
-
-    local_item = None
-    if LEMMY_BASE_URL:
-        base = urlsplit(LEMMY_BASE_URL)
-        if url_origin(parsed) == url_origin(base):
-            local_item = parse_local_item_path(parsed.path)
-
-    return {
-        "local_item": local_item,
-        "ap_urls": (clean_url, alternate_url),
-    }
+    return _parse_item_search(value, LEMMY_BASE_URL)
 
 
 def parse_page():
-    try:
-        page = int(request.args.get("page", "1"))
-    except (TypeError, ValueError):
-        return 1
-    return max(1, min(page, 1_000_000))
+    return _parse_page(request.args.get("page", "1"))
 
 
 def make_pagination(total, requested_page):
-    page_count = max(1, math.ceil(total / PAGE_SIZE)) if total else 1
-    page = min(max(1, requested_page), page_count)
-    return {
-        "page": page,
-        "page_count": page_count,
-        "total": total,
-        "offset": (page - 1) * PAGE_SIZE,
-        "has_prev": page > 1,
-        "has_next": page < page_count,
-        "prev_page": page - 1,
-        "next_page": page + 1,
-    }
+    return _make_pagination(total, requested_page, PAGE_SIZE)
 
 
 def build_index_url(
@@ -622,101 +517,35 @@ def build_index_url(
     community=None,
     community_sort="total",
 ):
-    params = {"user": username}
-    if history_view == "received":
-        params["view"] = "received"
-        if received_sort != "date":
-            params["sort"] = received_sort
-    elif history_view == "communities":
-        params["view"] = "communities"
-        if community_sort != "total":
-            params["sort"] = community_sort
-    if content_type != "all":
-        params["type"] = content_type
-    if score_filter is not None:
-        params["score"] = str(score_filter)
-    if community:
-        params["community"] = community
-    if page > 1:
-        params["page"] = str(page)
-    return f"{APP_PREFIX}/?{urlencode(params)}"
+    return _build_index_url(
+        username,
+        content_type,
+        score_filter,
+        page,
+        history_view,
+        received_sort,
+        community,
+        community_sort,
+        APP_PREFIX,
+    )
 
 
 def build_item_url(kind, item_id, page=1):
-    path = f"{APP_PREFIX}/item/{kind}/{item_id}"
-    return f"{path}?{urlencode({'page': page})}" if page > 1 else path
+    return _build_item_url(kind, item_id, page, APP_PREFIX)
 
 
 def build_instance_url(domain, sort="total", page=1):
-    path = f"{APP_PREFIX}/instance/{quote(domain, safe='.-')}"
-    params = {}
-    if sort != "total":
-        params["sort"] = sort
-    if page > 1:
-        params["page"] = str(page)
-    return f"{path}?{urlencode(params)}" if params else path
+    return _build_instance_url(domain, sort, page, APP_PREFIX)
 
 
 def build_community_overview_url(handle, sort="total", page=1):
-    community = handle.removeprefix("!")
-    path = f"{APP_PREFIX}/community/{quote(community, safe='@._~-')}"
-    params = {}
-    if sort != "total":
-        params["sort"] = sort
-    if page > 1:
-        params["page"] = str(page)
-    return f"{path}?{urlencode(params)}" if params else path
+    return _build_community_overview_url(handle, sort, page, APP_PREFIX)
 
 
 def vote_history_path(handle):
-    return build_index_url(handle, "all", None, 1) if handle else None
+    return _vote_history_path(handle, APP_PREFIX)
 
 
-INSTANCE_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
-
-
-def normalize_instance_domain(value):
-    value = value.strip().lower().rstrip(".")
-    if value.startswith("@"):
-        value = value[1:]
-    if not value or len(value) > 253 or "/" in value or "@" in value:
-        return None
-    try:
-        value = value.encode("idna").decode("ascii")
-    except UnicodeError:
-        return None
-    if len(value) > 253:
-        return None
-    labels = value.split(".")
-    if not labels or any(not INSTANCE_LABEL.fullmatch(label) for label in labels):
-        return None
-    return value
-
-
-def parse_community_handle(value):
-    value = value.strip()
-    if not value.startswith("!") or len(value) > 512:
-        return None
-
-    handle = value[1:]
-    if "@" in handle:
-        name, domain = handle.rsplit("@", 1)
-        domain = normalize_instance_domain(domain)
-        if not domain:
-            return None
-    else:
-        name = handle
-        domain = None
-
-    name = name.strip()
-    if (
-        not name
-        or len(name) > 255
-        or any(character.isspace() for character in name)
-        or any(character in name for character in "!/@")
-    ):
-        return None
-    return name, domain
 
 
 
@@ -795,33 +624,6 @@ def resolve_user(cur, username):
 
 
 
-def parse_user_suggestion_input(username):
-    username = username.strip()
-    if username.startswith("@"):
-        username = username[1:]
-
-    if "@" in username:
-        name_prefix, domain_prefix = username.rsplit("@", 1)
-        name_prefix = name_prefix.strip()
-        domain_prefix = domain_prefix.strip().lower().rstrip(".")
-        if "/" in domain_prefix or len(domain_prefix) > 255:
-            return None
-    else:
-        name_prefix = username
-        domain_prefix = None
-
-    if len(name_prefix) < 2 or len(name_prefix) > 255:
-        return None
-    return name_prefix, domain_prefix
-
-
-def like_prefix_pattern(value):
-    return (
-        value.replace("\\", "\\\\")
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-        + "%"
-    )
 
 
 def find_user_suggestions(cur, username, community=None, limit=8):

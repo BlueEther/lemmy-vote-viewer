@@ -21,6 +21,7 @@ os.environ["ENABLE_DOMAIN_SEARCH"] = "true"
 
 import app as compatibility_entrypoint
 from vote_viewer import application as viewer
+from vote_viewer import links
 from vote_viewer import create_app
 
 
@@ -98,6 +99,40 @@ class VoteViewerTests(unittest.TestCase):
     def test_factory_preserves_app_compatibility_entrypoint(self):
         self.assertIs(create_app(), viewer.app)
         self.assertIs(compatibility_entrypoint.app, viewer.app)
+
+    def test_pure_link_helpers_use_explicit_configuration(self):
+        self.assertEqual(
+            links.build_index_url(
+                "Dave@lemmy.nz",
+                history_view="received",
+                received_sort="top",
+                app_prefix="/votes",
+            ),
+            "/votes/?user=Dave%40lemmy.nz&view=received&sort=top",
+        )
+        self.assertEqual(
+            links.parse_item_search(
+                "https://lemmy.example/post/123",
+                "https://lemmy.example",
+            ),
+            {"local_item": ("post", 123), "ap_urls": (
+                "https://lemmy.example/post/123",
+                "https://lemmy.example/post/123",
+            )},
+        )
+        self.assertEqual(
+            links.make_pagination(45, 2, 20),
+            {
+                "page": 2,
+                "page_count": 3,
+                "total": 45,
+                "offset": 20,
+                "has_prev": True,
+                "has_next": True,
+                "prev_page": 1,
+                "next_page": 3,
+            },
+        )
 
     def request_index(self, path, results, community=None):
         database = ScriptedDatabase(results)
