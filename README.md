@@ -412,6 +412,10 @@ docker exec lemmy-easy-deploy-proxy-1 \
 
 ## Data semantics
 
+For a detailed description of every database query, its parameters, filters,
+result purpose, and performance characteristics, see the
+[SQL query reference](docs/sql-queries.md).
+
 This viewer shows the current vote state stored by this Lemmy instance.
 It is not a permanent audit log of removed or changed votes.
 Remote-user data is limited to what has already federated to and is stored by this instance.
