@@ -24,13 +24,14 @@ and documentation corrections can normally proceed directly to a pull request.
 | Path | Purpose |
 | --- | --- |
 | `app.py` | Gunicorn compatibility entry point |
-| `vote_viewer/application.py` | Flask application, routes, enrichment, and view context during the refactor |
+| `vote_viewer/application.py` | Flask application assembly and compatibility exports during the refactor |
 | `vote_viewer/auth.py` | Lemmy authentication, bounded caching, and authorization |
 | `vote_viewer/config.py` | Environment loading, defaults, validation, and bounds |
 | `vote_viewer/database.py` | PostgreSQL connection creation and safety options |
 | `vote_viewer/queries.py` | SQL constants, query templates, and controlled sort expressions |
 | `vote_viewer/links.py` | Pure handle, URL, parsing, and pagination helpers |
 | `vote_viewer/services.py` | Database-backed resolution and row enrichment operations |
+| `vote_viewer/routes/` | Blueprints for search, overview, and item routes |
 | `templates/` | Jinja HTML templates and shared footer |
 | `static/style.css` | Responsive presentation |
 | `tests/test_app.py` | Isolated `unittest` suite |
@@ -110,7 +111,7 @@ application.
 With dependencies installed:
 
 ```sh
-python3 -m py_compile app.py vote_viewer/*.py
+python3 -m py_compile app.py vote_viewer/*.py vote_viewer/routes/*.py
 python3 -m unittest discover -s tests -v
 ```
 
@@ -285,7 +286,7 @@ Before committing:
 git status --short --branch
 git diff
 git diff --check
-python3 -m py_compile app.py vote_viewer/*.py
+python3 -m py_compile app.py vote_viewer/*.py vote_viewer/routes/*.py
 python3 -m unittest discover -s tests -v
 ```
 
