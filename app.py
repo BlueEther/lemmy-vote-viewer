@@ -125,6 +125,9 @@ def inject_app_config():
         "lemmy_instance": LEMMY_INSTANCE,
         "lemmy_login_url": LEMMY_LOGIN_URL,
         "auth_user": auth_user,
+        "viewer_access_enabled": access_requirement_met(
+            auth_user, AUTH_SEARCH_REQUIRE
+        ),
         "domain_search_enabled": (
             ENABLE_DOMAIN_SEARCH
             and access_requirement_met(auth_user, AUTH_INSTANCE_REQUIRE)

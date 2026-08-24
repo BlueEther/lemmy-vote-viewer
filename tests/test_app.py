@@ -69,6 +69,7 @@ class VoteViewerTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 401)
         self.assertIn(b"Log in to Lemmy", response.data)
+        self.assertNotIn(b"github.com/BlueEther/lemmy-vote-viewer", response.data)
 
     def test_anonymous_item_routes_require_login_before_database_access(self):
         self.assertEqual(self.client.get("/item/post/1").status_code, 401)
@@ -78,6 +79,7 @@ class VoteViewerTests(unittest.TestCase):
         response = self.request_as(lemmy_user_payload())
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Signed in as Alice", response.data)
+        self.assertIn(b"github.com/BlueEther/lemmy-vote-viewer", response.data)
         self.assertNotIn(b"Instance vote overview", response.data)
         self.assertNotIn(b"Community vote overview", response.data)
 
