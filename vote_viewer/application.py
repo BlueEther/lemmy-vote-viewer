@@ -3,21 +3,19 @@
 
 import hashlib
 import json
-import os
 import threading
 import time
 from datetime import timezone
 from functools import wraps
 from pathlib import Path
-from urllib.parse import urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, abort, g, redirect, render_template, request
 import psycopg
 from psycopg.rows import dict_row
 
+from .config import load_config
 from .links import (
     actor_domain,
     build_community_overview_url as _build_community_overview_url,
@@ -64,37 +62,39 @@ from .queries import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG = load_config(project_root=PROJECT_ROOT)
+
+APP_VERSION = CONFIG.app_version
+DB_DSN = CONFIG.database_url
+ENABLE_DOMAIN_SEARCH = CONFIG.enable_domain_search
+APP_PREFIX = CONFIG.app_prefix
+PAGE_SIZE = CONFIG.page_size
+INSTANCE_QUERY_TIMEOUT_SECONDS = CONFIG.instance_query_timeout_seconds
+INSTANCE_VOTE_WINDOW_DAYS = CONFIG.instance_vote_window_days
+TIMEZONE_NAME = CONFIG.timezone_name
+DISPLAY_TIMEZONE = CONFIG.display_timezone
+LEMMY_BASE_URL = CONFIG.lemmy_base_url
+LEMMY_INSTANCE = CONFIG.lemmy_instance
+AUTH_PROVIDER = CONFIG.auth_provider
+AUTH_SEARCH_REQUIRE = CONFIG.auth_search_require
+AUTH_INSTANCE_REQUIRE = CONFIG.auth_instance_require
+AUTH_ALLOWED_USERS = CONFIG.auth_allowed_users
+AUTH_COOKIE_NAME = CONFIG.auth_cookie_name
+AUTH_CACHE_SECONDS = CONFIG.auth_cache_seconds
+AUTH_TIMEOUT_SECONDS = CONFIG.auth_timeout_seconds
+LEMMY_INTERNAL_URL = CONFIG.lemmy_internal_url
+LEMMY_LOGIN_URL = CONFIG.lemmy_login_url
 
 app = Flask(
     __name__,
     template_folder=str(PROJECT_ROOT / "templates"),
     static_folder=str(PROJECT_ROOT / "static"),
 )
+app.config["VOTE_VIEWER_CONFIG"] = CONFIG
 
 
 class AuthenticationUnavailable(Exception):
     pass
-
-
-APP_VERSION = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-if not APP_VERSION:
-    raise RuntimeError("VERSION file is empty")
-DB_DSN = os.environ["DATABASE_URL"]
-
-
-def boolean_env(name, default=False):
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    normalized = value.strip().lower()
-    if normalized == "true":
-        return True
-    if normalized == "false":
-        return False
-    raise RuntimeError(f"{name} must be either true or false")
-
-
-ENABLE_DOMAIN_SEARCH = boolean_env("ENABLE_DOMAIN_SEARCH", False)
 
 ERROR_MESSAGES = {
     400: "The request could not be understood.",
@@ -105,36 +105,6 @@ ERROR_MESSAGES = {
     503: "The database query took too long. Please try again later.",
 }
 
-_raw_prefix = os.environ.get("APP_PREFIX", "/votes").strip()
-APP_PREFIX = "" if _raw_prefix in ("", "/") else "/" + _raw_prefix.strip("/")
-
-try:
-    PAGE_SIZE = int(os.environ.get("PAGE_SIZE", "100"))
-except ValueError:
-    PAGE_SIZE = 100
-PAGE_SIZE = max(20, min(PAGE_SIZE, 250))
-
-try:
-    INSTANCE_QUERY_TIMEOUT_SECONDS = int(
-        os.environ.get("INSTANCE_QUERY_TIMEOUT_SECONDS", "12")
-    )
-except ValueError:
-    INSTANCE_QUERY_TIMEOUT_SECONDS = 12
-INSTANCE_QUERY_TIMEOUT_SECONDS = max(5, min(INSTANCE_QUERY_TIMEOUT_SECONDS, 12))
-
-try:
-    INSTANCE_VOTE_WINDOW_DAYS = int(
-        os.environ.get("INSTANCE_VOTE_WINDOW_DAYS", "30")
-    )
-except ValueError:
-    INSTANCE_VOTE_WINDOW_DAYS = 30
-INSTANCE_VOTE_WINDOW_DAYS = max(1, min(INSTANCE_VOTE_WINDOW_DAYS, 365))
-
-TIMEZONE_NAME = os.environ.get("TIMEZONE", "UTC").strip() or "UTC"
-try:
-    DISPLAY_TIMEZONE = ZoneInfo(TIMEZONE_NAME)
-except (ValueError, ZoneInfoNotFoundError) as exc:
-    raise RuntimeError(f"Invalid TIMEZONE: {TIMEZONE_NAME}") from exc
 
 
 @app.after_request
@@ -253,79 +223,6 @@ def db():
 
 
 
-def lemmy_instance_config(value):
-    url = safe_http_url(value.strip()) if value else None
-    if not url:
-        return None, None
-    try:
-        parsed = urlsplit(url)
-        if parsed.username or parsed.password:
-            return None, None
-        base_url = f"{parsed.scheme.lower()}://{parsed.netloc}"
-        instance = (parsed.hostname or "").lower().rstrip(".")
-        return (base_url, instance) if instance else (None, None)
-    except ValueError:
-        return None, None
-
-
-LEMMY_BASE_URL, LEMMY_INSTANCE = lemmy_instance_config(
-    os.environ.get("LEMMY_BASE_URL", "")
-)
-
-
-AUTH_REQUIREMENTS = {"none", "login", "allowlist", "admin"}
-
-
-def auth_requirement_env(name, default="none"):
-    requirement = os.environ.get(name, default).strip().lower()
-    if requirement not in AUTH_REQUIREMENTS:
-        choices = ", ".join(sorted(AUTH_REQUIREMENTS))
-        raise RuntimeError(f"{name} must be one of: {choices}")
-    return requirement
-
-
-AUTH_PROVIDER = os.environ.get("AUTH_PROVIDER", "none").strip().lower()
-if AUTH_PROVIDER not in ("none", "lemmy"):
-    raise RuntimeError("AUTH_PROVIDER must be either none or lemmy")
-
-AUTH_SEARCH_REQUIRE = auth_requirement_env("AUTH_SEARCH_REQUIRE")
-AUTH_INSTANCE_REQUIRE = auth_requirement_env("AUTH_INSTANCE_REQUIRE")
-if AUTH_PROVIDER == "none" and (
-    AUTH_SEARCH_REQUIRE != "none" or AUTH_INSTANCE_REQUIRE != "none"
-):
-    raise RuntimeError(
-        "AUTH_PROVIDER must be lemmy when an authentication requirement is enabled"
-    )
-
-AUTH_ALLOWED_USERS = frozenset(
-    username.strip().casefold()
-    for username in os.environ.get("AUTH_ALLOWED_USERS", "").split(",")
-    if username.strip()
-)
-AUTH_COOKIE_NAME = os.environ.get("AUTH_COOKIE_NAME", "jwt").strip() or "jwt"
-
-try:
-    AUTH_CACHE_SECONDS = int(os.environ.get("AUTH_CACHE_SECONDS", "60"))
-except ValueError:
-    AUTH_CACHE_SECONDS = 60
-AUTH_CACHE_SECONDS = max(0, min(AUTH_CACHE_SECONDS, 300))
-
-try:
-    AUTH_TIMEOUT_SECONDS = float(os.environ.get("AUTH_TIMEOUT_SECONDS", "3"))
-except ValueError:
-    AUTH_TIMEOUT_SECONDS = 3.0
-AUTH_TIMEOUT_SECONDS = max(1.0, min(AUTH_TIMEOUT_SECONDS, 10.0))
-
-_auth_internal_url = os.environ.get("LEMMY_INTERNAL_URL", "").strip()
-LEMMY_INTERNAL_URL, _ = lemmy_instance_config(
-    _auth_internal_url or LEMMY_BASE_URL or ""
-)
-if AUTH_PROVIDER == "lemmy" and not LEMMY_INTERNAL_URL:
-    raise RuntimeError(
-        "LEMMY_INTERNAL_URL or LEMMY_BASE_URL is required for Lemmy authentication"
-    )
-
-LEMMY_LOGIN_URL = f"{LEMMY_BASE_URL}/login" if LEMMY_BASE_URL else None
 _AUTH_CACHE = {}
 _AUTH_CACHE_LOCK = threading.Lock()
 _AUTH_CACHE_MAX_ENTRIES = 1024

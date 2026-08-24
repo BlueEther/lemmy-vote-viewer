@@ -99,6 +99,9 @@ class VoteViewerTests(unittest.TestCase):
     def test_factory_preserves_app_compatibility_entrypoint(self):
         self.assertIs(create_app(), viewer.app)
         self.assertIs(compatibility_entrypoint.app, viewer.app)
+        self.assertIs(
+            viewer.app.config["VOTE_VIEWER_CONFIG"], viewer.CONFIG
+        )
 
     def test_pure_link_helpers_use_explicit_configuration(self):
         self.assertEqual(

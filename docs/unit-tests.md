@@ -1,11 +1,13 @@
 # Unit tests
 
-The unit test suite is in [`tests/test_app.py`](../tests/test_app.py). It uses
-Python's standard-library `unittest` framework and currently contains 38 tests.
+The unit test suite is in [`tests/test_app.py`](../tests/test_app.py) and
+[`tests/test_config.py`](../tests/test_config.py). It uses Python's
+standard-library `unittest` framework and currently contains 42 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
-behavior.
+behavior. Configuration tests separately cover environment defaults,
+normalization, bounds, and startup validation.
 
 ## Running the tests
 
@@ -61,6 +63,31 @@ Verifies that the extracted pure link helpers accept the application prefix,
 Lemmy base URL, and page size explicitly. It checks prefixed URL generation,
 local item recognition, and pagination without Flask request or application
 configuration imports.
+
+## Configuration
+
+### `test_defaults_are_preserved`
+
+Loads configuration from only the required database setting and verifies the
+existing prefix, page size, query timeout, vote window, timezone, feature flag,
+authentication, cookie, cache, request-timeout, and Lemmy URL defaults.
+
+### `test_values_are_normalized_bounded_and_fallback_on_bad_numbers`
+
+Verifies prefix and URL normalization, case-insensitive booleans and allowed
+users, numeric minimum and maximum bounds, invalid-number fallbacks, and Lemmy
+public/internal URL derivation.
+
+### `test_invalid_settings_raise_the_existing_startup_errors`
+
+Checks invalid booleans, timezones, authentication providers and requirements,
+provider/requirement mismatches, and missing Lemmy authentication URLs. Each
+case must retain its specific startup error.
+
+### `test_database_url_remains_required`
+
+Verifies that loading configuration without `DATABASE_URL` still raises
+`KeyError` during startup.
 
 ### `test_anonymous_search_requires_login`
 
