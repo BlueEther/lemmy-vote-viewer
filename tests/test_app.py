@@ -36,6 +36,34 @@ class FakeResponse:
         return self.payload[:limit]
 
 
+class ScriptedDatabase:
+    def __init__(self, results):
+        self.results = list(results)
+        self.queries = []
+        self.current_result = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def cursor(self):
+        return self
+
+    def execute(self, query, params=None):
+        self.queries.append((query, params))
+        self.current_result = self.results.pop(0)
+        if isinstance(self.current_result, BaseException):
+            raise self.current_result
+
+    def fetchone(self):
+        return self.current_result
+
+    def fetchall(self):
+        return self.current_result
+
+
 def lemmy_user_payload(username="Alice", admin=False, banned=False, deleted=False):
     return {
         "my_user": {
@@ -64,6 +92,71 @@ class VoteViewerTests(unittest.TestCase):
             return_value=FakeResponse(payload),
         ):
             return self.client.get(path)
+
+    def request_index(self, path, results, community=None):
+        database = ScriptedDatabase(results)
+        context = {}
+        user = {
+            "id": 42,
+            "name": "Dave",
+            "display_name": "Dave",
+            "local": False,
+            "actor_id": "https://lemmy.nz/u/Dave",
+            "handle": "Dave@lemmy.nz",
+            "profile_path": "/u/Dave@lemmy.nz",
+        }
+
+        def capture_template(template_name, **values):
+            context["template_name"] = template_name
+            context.update(values)
+            return "rendered"
+
+        with (
+            patch.object(viewer, "db", return_value=database),
+            patch.object(viewer, "resolve_user", return_value=user),
+            patch.object(
+                viewer,
+                "resolve_community",
+                return_value=(community, None),
+            ),
+            patch.object(viewer, "enrich_user_vote", side_effect=dict),
+            patch.object(viewer, "enrich_item", side_effect=dict),
+            patch.object(
+                viewer,
+                "enrich_community_summary",
+                side_effect=lambda row, username: dict(row),
+            ),
+            patch.object(viewer, "render_template", side_effect=capture_template),
+        ):
+            response = self.request_as(lemmy_user_payload(), path)
+        return response, database, context
+
+    @staticmethod
+    def user_summaries(filtered_total=1, filtered_items=1):
+        cast = {
+            "total": 12,
+            "up": 9,
+            "down": 3,
+            "neutral": 0,
+            "posts": 5,
+            "comments": 7,
+            "filtered_total": filtered_total,
+        }
+        received = {
+            "total": 30,
+            "up": 25,
+            "down": 5,
+            "neutral": 0,
+            "posts": 20,
+            "comments": 10,
+            "items": 8,
+            "post_items": 5,
+            "comment_items": 3,
+            "filtered_items": filtered_items,
+            "post_filtered_items": filtered_items,
+            "comment_filtered_items": filtered_items,
+        }
+        return cast, received
 
     def test_anonymous_search_requires_login(self):
         response = self.client.get("/")
@@ -181,6 +274,223 @@ class VoteViewerTests(unittest.TestCase):
             auth_request.get_header("Authorization"), "Bearer test-token"
         )
         self.assertTrue(all(isinstance(key, bytes) for key in viewer._AUTH_CACHE))
+
+    def test_index_cast_view_selects_unfiltered_query_and_preserves_filters(self):
+        cast, received = self.user_summaries(filtered_total=250)
+        response, database, context = self.request_index(
+            "/?user=Dave%40lemmy.nz&type=comment&score=-1&page=2",
+            [cast, received, []],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [query for query, _ in database.queries],
+            [
+                viewer.USER_SUMMARY_SQL,
+                viewer.USER_RECEIVED_SUMMARY_SQL,
+                viewer.USER_VOTES_SQL,
+            ],
+        )
+        self.assertEqual(
+            database.queries[2][1],
+            ("comment", -1, 42, 42, viewer.PAGE_SIZE, viewer.PAGE_SIZE),
+        )
+        self.assertEqual(context["history_view"], "cast")
+        self.assertEqual(context["content_type"], "comment")
+        self.assertEqual(context["score_filter"], -1)
+        self.assertEqual(context["pagination"]["page"], 2)
+        self.assertEqual(
+            parse_qs(urlsplit(context["pagination"]["next_url"]).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "type": ["comment"],
+                "score": ["-1"],
+                "page": ["3"],
+            },
+        )
+
+    def test_index_cast_view_selects_community_filtered_query(self):
+        cast, received = self.user_summaries()
+        community = {
+            "id": 77,
+            "name": "newzealand",
+            "handle": "!newzealand@lemmy.nz",
+        }
+        response, database, context = self.request_index(
+            "/?user=Dave%40lemmy.nz&community=!newzealand%40lemmy.nz",
+            [cast, received, []],
+            community=community,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(database.queries[2][0], viewer.USER_VOTES_BY_COMMUNITY_SQL)
+        self.assertEqual(
+            database.queries[2][1],
+            ("all", None, 77, 42, 42, viewer.PAGE_SIZE, 0),
+        )
+        self.assertEqual(context["community_query"], "!newzealand@lemmy.nz")
+        self.assertEqual(context["community"], community)
+
+    def test_index_received_view_selects_sort_and_ignores_score(self):
+        for sort_name in ("date", "top", "bottom"):
+            with self.subTest(sort=sort_name):
+                cast, received = self.user_summaries(filtered_items=2)
+                path = (
+                    "/?user=Dave%40lemmy.nz&view=received&type=post"
+                    f"&score=-1&sort={sort_name}"
+                )
+                response, database, context = self.request_index(
+                    path,
+                    [cast, received, []],
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    database.queries[2][0], viewer.USER_RECEIVED_ITEMS_SQL
+                )
+                self.assertEqual(
+                    database.queries[2][1],
+                    ("post", sort_name, 42, 42, viewer.PAGE_SIZE, 0),
+                )
+                self.assertIsNone(context["score_filter"])
+                self.assertEqual(context["received_sort"], sort_name)
+
+    def test_index_received_view_selects_community_filtered_query(self):
+        cast, received = self.user_summaries(filtered_items=250)
+        community = {
+            "id": 77,
+            "name": "newzealand",
+            "handle": "!newzealand@lemmy.nz",
+        }
+        response, database, context = self.request_index(
+            "/?user=Dave%40lemmy.nz&view=received&sort=bottom"
+            "&community=!newzealand%40lemmy.nz",
+            [cast, received, []],
+            community=community,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            database.queries[2][0], viewer.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL
+        )
+        self.assertEqual(
+            database.queries[2][1],
+            ("all", "bottom", 77, 42, 42, viewer.PAGE_SIZE, 0),
+        )
+        self.assertIn("view=received", context["pagination"].get("next_url", ""))
+
+    def test_index_community_view_selects_sort_and_preserves_pagination(self):
+        cast, received = self.user_summaries()
+        community_row = {"community_count": 250, "community_id": 77}
+        response, database, context = self.request_index(
+            "/?user=Dave%40lemmy.nz&view=communities&sort=down&page=2",
+            [cast, received, [community_row]],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            database.queries[2][0],
+            viewer.USER_COMMUNITY_SUMMARY_SQL.format(
+                order_by=viewer.COMMUNITY_SUMMARY_SORTS["down"]
+            ),
+        )
+        self.assertEqual(
+            database.queries[2][1],
+            (42, 42, 42, 42, viewer.PAGE_SIZE, viewer.PAGE_SIZE),
+        )
+        self.assertEqual(context["content_type"], "all")
+        self.assertEqual(
+            parse_qs(urlsplit(context["pagination"]["next_url"]).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "view": ["communities"],
+                "sort": ["down"],
+                "page": ["3"],
+            },
+        )
+
+    def test_index_empty_deep_community_page_redirects_to_first_page(self):
+        cast, received = self.user_summaries()
+        response, _, _ = self.request_index(
+            "/?user=Dave%40lemmy.nz&view=communities&sort=name&page=99",
+            [cast, received, []],
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            parse_qs(urlsplit(response.headers["Location"]).query),
+            {
+                "user": ["Dave@lemmy.nz"],
+                "view": ["communities"],
+                "sort": ["name"],
+            },
+        )
+
+    def test_index_cast_page_is_clamped_to_available_results(self):
+        cast, received = self.user_summaries(filtered_total=150)
+        response, database, context = self.request_index(
+            "/?user=Dave%40lemmy.nz&page=9999999",
+            [cast, received, []],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(context["pagination"]["page"], 2)
+        self.assertEqual(database.queries[2][1][-1], viewer.PAGE_SIZE)
+
+    def test_index_local_item_paths_redirect_without_database_lookup(self):
+        for path, expected in (
+            ("/?item=/post/123", "/item/post/123"),
+            ("/?item=/comment/456", "/item/comment/456"),
+        ):
+            with self.subTest(path=path):
+                with patch.object(viewer, "db") as mocked_db:
+                    response = self.request_as(lemmy_user_payload(), path)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(urlsplit(response.headers["Location"]).path, expected)
+                mocked_db.assert_not_called()
+
+    def test_index_activitypub_item_url_uses_lookup_and_redirects(self):
+        for kind, item_id in (("post", 123), ("comment", 456)):
+            with self.subTest(kind=kind):
+                item_url = f"https://remote.example/{kind}/{item_id}/"
+                alternate_url = item_url.rstrip("/")
+                database = ScriptedDatabase(
+                    [{"kind": kind, "item_id": item_id}]
+                )
+                with patch.object(viewer, "db", return_value=database):
+                    response = self.request_as(
+                        lemmy_user_payload(),
+                        f"/?item={item_url}",
+                    )
+
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(
+                    urlsplit(response.headers["Location"]).path,
+                    f"/item/{kind}/{item_id}",
+                )
+                self.assertEqual(database.queries[0][0], viewer.ITEM_BY_AP_ID_SQL)
+                self.assertEqual(
+                    database.queries[0][1],
+                    (item_url, alternate_url, item_url, alternate_url),
+                )
+
+    def test_index_query_timeout_returns_503(self):
+        database = ScriptedDatabase([viewer.psycopg.errors.QueryCanceled()])
+        with (
+            patch.object(viewer, "db", return_value=database),
+            patch.object(
+                viewer,
+                "resolve_user",
+                side_effect=lambda cur, username: cur.execute("slow query"),
+            ),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(),
+                "/?user=Dave%40lemmy.nz",
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn(b"database query took too long", response.data.lower())
 
     def test_community_handle_parser_accepts_local_and_remote_handles(self):
         self.assertEqual(

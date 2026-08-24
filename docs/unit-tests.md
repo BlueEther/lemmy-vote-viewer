@@ -1,7 +1,7 @@
 # Unit tests
 
 The unit test suite is in [`tests/test_app.py`](../tests/test_app.py). It uses
-Python's standard-library `unittest` framework and currently contains 26 tests.
+Python's standard-library `unittest` framework and currently contains 36 tests.
 
 The suite covers authentication, authorization, community-handle parsing, URL
 construction, SQL-query selection, link enrichment, and conditional template
@@ -41,10 +41,12 @@ independent of a developer's `.env` file and the application's default `/votes`
 prefix.
 
 The database URL deliberately points to an unused database because these tests
-do not require a live PostgreSQL connection. Each test clears the in-memory
-authentication cache and creates a fresh Flask test client. Lemmy API responses
-are represented by `FakeResponse` and the application's HTTP opener is mocked,
-so the suite does not contact a Lemmy server or the network.
+do not require a live PostgreSQL connection. Request-level query tests use
+`ScriptedDatabase`, a small database double that supplies predetermined rows
+and records SQL and parameters for later assertions. Each test clears the
+in-memory authentication cache and creates a fresh Flask test client. Lemmy API
+responses are represented by `FakeResponse` and the application's HTTP opener
+is mocked, so the suite does not contact a Lemmy server or the network.
 
 ## Authentication and authorization
 
@@ -131,6 +133,71 @@ performed only once. It also checks that the request targets the configured
 internal Lemmy `/api/v3/site` endpoint, sends the JWT as a bearer token, and
 stores only hashed byte keys in the authentication cache rather than the raw
 token.
+
+## Search-route characterization
+
+These request-level tests lock in the observable behavior of the large
+`index()` route before it is split into smaller modules.
+
+### `test_index_cast_view_selects_unfiltered_query_and_preserves_filters`
+
+Requests the second page of a user's comment downvotes. It verifies selection
+of the cheaper unfiltered cast-history query, its exact parameters, the
+rendered filter state, and preservation of the user, type, score, and page in
+the next-page URL.
+
+### `test_index_cast_view_selects_community_filtered_query`
+
+Requests cast history within a resolved community and verifies selection of
+the community-filtered query, including the community ID in its parameters and
+the canonical community handle in the rendered state.
+
+### `test_index_received_view_selects_sort_and_ignores_score`
+
+Exercises date, top, and bottom sorting for received votes. It verifies the
+selected unfiltered received-items query and parameters and confirms that a
+cast-vote score filter is discarded in received mode.
+
+### `test_index_received_view_selects_community_filtered_query`
+
+Requests bottom-sorted received votes within a community. It verifies selection
+of the community-filtered received-items query, its parameters, and preservation
+of received mode in pagination.
+
+### `test_index_community_view_selects_sort_and_preserves_pagination`
+
+Requests the second page of downvote-sorted community summaries. It verifies
+the controlled SQL sort expression, exact pagination parameters, forced `all`
+content type, and preservation of the community-summary view and sort order in
+the next-page URL.
+
+### `test_index_empty_deep_community_page_redirects_to_first_page`
+
+Requests an empty community-summary page beyond the available results and
+verifies the redirect to the first page while retaining the username, view,
+and sort order.
+
+### `test_index_cast_page_is_clamped_to_available_results`
+
+Requests an extremely large cast-history page number and verifies that the
+rendered page and SQL offset are clamped to the final available page.
+
+### `test_index_local_item_paths_redirect_without_database_lookup`
+
+Exercises both `/post/123` and `/comment/456` search input. It verifies direct
+redirects to the corresponding viewer pages without opening the database.
+
+### `test_index_activitypub_item_url_uses_lookup_and_redirects`
+
+Exercises remote post and comment ActivityPub URLs. It verifies use of the
+public-item lookup query with both trailing-slash variants and redirects to the
+resolved viewer item pages.
+
+### `test_index_query_timeout_returns_503`
+
+Makes the database boundary raise PostgreSQL's query-cancellation exception
+during a user search and verifies that the request returns HTTP 503 with the
+specific timeout message.
 
 ## Community parsing and URL state
 

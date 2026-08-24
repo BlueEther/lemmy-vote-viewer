@@ -256,7 +256,7 @@ the versioning guidance in [`releasing.md`](releasing.md).
 
 ## Completion criteria
 
-- [ ] Characterization tests cover the major `index()` branches.
+- [x] Characterization tests cover the major `index()` branches.
 - [ ] Production still starts through `app:app`.
 - [ ] Imports follow the documented dependency direction.
 - [ ] No circular imports or unnecessary compatibility re-exports remain.
