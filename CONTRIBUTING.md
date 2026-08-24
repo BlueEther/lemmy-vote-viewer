@@ -23,7 +23,9 @@ and documentation corrections can normally proceed directly to a pull request.
 
 | Path | Purpose |
 | --- | --- |
-| `app.py` | Flask routes, authentication, SQL, parsing, enrichment, and view context |
+| `app.py` | Gunicorn compatibility entry point |
+| `vote_viewer/application.py` | Flask application, routes, authentication, parsing, enrichment, and view context during the refactor |
+| `vote_viewer/queries.py` | SQL constants, query templates, and controlled sort expressions |
 | `templates/` | Jinja HTML templates and shared footer |
 | `static/style.css` | Responsive presentation |
 | `tests/test_app.py` | Isolated `unittest` suite |
@@ -103,7 +105,7 @@ application.
 With dependencies installed:
 
 ```sh
-python3 -m py_compile app.py
+python3 -m py_compile app.py vote_viewer/*.py
 python3 -m unittest discover -s tests -v
 ```
 
@@ -278,7 +280,7 @@ Before committing:
 git status --short --branch
 git diff
 git diff --check
-python3 -m py_compile app.py
+python3 -m py_compile app.py vote_viewer/*.py
 python3 -m unittest discover -s tests -v
 ```
 
@@ -315,7 +317,7 @@ gh pr create \
 - [ ] The branch contains one coherent change.
 - [ ] No `.env`, dump, backup, credential, token, or sensitive log is staged.
 - [ ] `git diff --check` passes.
-- [ ] `app.py` compiles.
+- [ ] `app.py` and the `vote_viewer` package compile.
 - [ ] All unit tests pass, or skipped checks are disclosed.
 - [ ] New behavior and regressions have tests.
 - [ ] SQL changes were measured against realistic copied data.

@@ -1,8 +1,9 @@
 # SQL query reference
 
 Lemmy Vote Viewer reads Lemmy's PostgreSQL schema directly. This document
-describes every application query in `app.py`, including generated variants and
-inline statements.
+describes every application query. Reusable SQL constants, generated variants,
+and controlled sort expressions are defined in `vote_viewer/queries.py`;
+small route-specific statements may remain inline while the refactor proceeds.
 
 [`db-grants.sql`](../db-grants.sql) is the authoritative list of database
 columns available to the viewer. See the
