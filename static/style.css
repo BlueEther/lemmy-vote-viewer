@@ -108,6 +108,12 @@ button { cursor: pointer; }
   gap: 16px;
 }
 
+.overview-stats {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  text-align: right;
+}
+
 .vote-summary-grid {
   display: grid;
   grid-template-columns: max-content repeat(5, max-content);
@@ -535,6 +541,11 @@ blockquote {
   .summary {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .overview-stats {
+    justify-content: flex-start;
+    text-align: left;
   }
 
   .vote-summary-grid {
