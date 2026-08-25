@@ -59,7 +59,7 @@ def build_index_url(
     score_filter=None,
     page=1,
     history_view="cast",
-    received_sort="date",
+    history_sort="date",
     community=None,
     community_sort="total",
 ):
@@ -69,7 +69,7 @@ def build_index_url(
         score_filter,
         page,
         history_view,
-        received_sort,
+        history_sort,
         community,
         community_sort,
         config().app_prefix,

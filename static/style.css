@@ -165,8 +165,27 @@ button { cursor: pointer; }
   margin-right: 2px;
 }
 
+.history-filters {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 12px 28px;
+  align-items: start;
+}
+
+.history-filters .filter-label {
+  min-width: 58px;
+}
+
+.history-filters > .filter-group {
+  min-width: 22.5rem;
+}
+
 .community-filter {
   flex: 1 1 100%;
+}
+
+.history-filters .community-filter {
+  grid-column: 1 / -1;
 }
 
 .community-filter input[name="community"] {
@@ -531,6 +550,12 @@ blockquote {
   }
 
   .user-summary .summary-note { text-align: left; }
+}
+
+@media (max-width: 780px) {
+  .history-filters { grid-template-columns: 1fr; }
+
+  .history-filters > .filter-group { min-width: 0; }
 }
 
 @media (max-width: 700px) {

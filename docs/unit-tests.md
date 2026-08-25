@@ -64,8 +64,8 @@ configured Flask application without also exporting the package's
 
 Verifies that the extracted pure link helpers accept the application prefix,
 Lemmy base URL, and page size explicitly. It checks prefixed URL generation,
-local item recognition, and pagination without Flask request or application
-configuration imports.
+oldest-first cast-history URLs, local item recognition, and pagination without
+Flask request or application configuration imports.
 
 ## Configuration
 
@@ -236,14 +236,15 @@ the next-page URL.
 ### `test_index_cast_view_selects_community_filtered_query`
 
 Requests cast history within a resolved community and verifies selection of
-the community-filtered query, including the community ID in its parameters and
-the canonical community handle in the rendered state.
+the oldest-first community-filtered query, including the community ID in its
+parameters, the canonical community handle in the rendered state, and sort
+preservation in the clear-filter URL.
 
 ### `test_index_received_view_selects_sort_and_ignores_score`
 
-Exercises date, top, and bottom sorting for received votes. It verifies the
-selected unfiltered received-items query and parameters and confirms that a
-cast-vote score filter is discarded in received mode.
+Exercises newest, oldest, top, and bottom sorting for received votes. It
+verifies the selected unfiltered received-items query and parameters and
+confirms that a cast-vote score filter is discarded in received mode.
 
 ### `test_index_received_view_selects_community_filtered_query`
 

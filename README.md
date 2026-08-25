@@ -35,7 +35,7 @@ comments, and review recent voting activity by instance or community.
 - Filter cast and received histories by local or known remote community
 - Compare votes cast and received across communities in a grouped summary
 - Open a community overview showing recent voters and their vote totals
-- Sort received-vote histories by date or score
+- Sort cast histories by date and received histories by date or score
 - Review optional instance-level summaries and recent per-user vote totals
 - Follow links to local profiles, content, vote histories, and remote originals
 - Paginate large result sets with a configurable page size
@@ -87,7 +87,6 @@ instance overview.
 
 ### High priority
 
-- Add oldest-first sorting to cast and received vote histories.
 - Add database-backed integration tests for supported Lemmy releases.
 - Improve deep-page performance by replacing large `OFFSET` queries with
   cursor-based pagination.

@@ -16,6 +16,8 @@ from ..queries import (
     USER_RECEIVED_SUMMARY_SQL,
     USER_SUMMARY_SQL,
     USER_VOTES_BY_COMMUNITY_SQL,
+    USER_VOTES_OLDEST_BY_COMMUNITY_SQL,
+    USER_VOTES_OLDEST_SQL,
     USER_VOTES_SQL,
 )
 from ..services import (
@@ -109,9 +111,15 @@ def index():
         content_type = "all"
 
     raw_sort = request.args.get("sort", "")
+    cast_sort = raw_sort or "date"
+    if cast_sort not in ("date", "oldest"):
+        cast_sort = "date"
+
     received_sort = raw_sort or "date"
-    if received_sort not in ("date", "top", "bottom"):
+    if received_sort not in ("date", "oldest", "top", "bottom"):
         received_sort = "date"
+
+    history_sort = received_sort if history_view == "received" else cast_sort
 
     community_sort = raw_sort or "total"
     if community_sort not in COMMUNITY_SUMMARY_SORTS:
@@ -206,14 +214,22 @@ def index():
                             summary["filtered_total"], requested_page
                         )
                         if community_id is None:
-                            votes_sql = USER_VOTES_SQL
+                            votes_sql = (
+                                USER_VOTES_OLDEST_SQL
+                                if cast_sort == "oldest"
+                                else USER_VOTES_SQL
+                            )
                             votes_params = (
                                 content_type, score_filter,
                                 user["id"], user["id"],
                                 settings.page_size, pagination["offset"],
                             )
                         else:
-                            votes_sql = USER_VOTES_BY_COMMUNITY_SQL
+                            votes_sql = (
+                                USER_VOTES_OLDEST_BY_COMMUNITY_SQL
+                                if cast_sort == "oldest"
+                                else USER_VOTES_BY_COMMUNITY_SQL
+                            )
                             votes_params = (
                                 content_type, score_filter, community_id,
                                 user["id"], user["id"],
@@ -299,11 +315,11 @@ def index():
                     type_urls = {
                         "all": build_index_url(
                             canonical_username, "all", score_filter, 1, history_view,
-                            received_sort, community_query,
+                            history_sort, community_query,
                         ),
                         "post": build_index_url(
                             canonical_username, "post", score_filter, 1, history_view,
-                            received_sort, community_query,
+                            history_sort, community_query,
                         ),
                         "comment": build_index_url(
                             canonical_username,
@@ -311,30 +327,35 @@ def index():
                             score_filter,
                             1,
                             history_view,
-                            received_sort, community_query,
+                            history_sort, community_query,
                         ),
                     }
                     score_urls = {
                         "all": build_index_url(
-                            canonical_username, content_type, None,
+                            canonical_username, content_type, None, 1, "cast",
+                            cast_sort,
                             community=community_query,
                         ),
                         "1": build_index_url(
-                            canonical_username, content_type, 1,
+                            canonical_username, content_type, 1, 1, "cast",
+                            cast_sort,
                             community=community_query,
                         ),
                         "-1": build_index_url(
-                            canonical_username, content_type, -1,
+                            canonical_username, content_type, -1, 1, "cast",
+                            cast_sort,
                             community=community_query,
                         ),
                         "0": build_index_url(
-                            canonical_username, content_type, 0,
+                            canonical_username, content_type, 0, 1, "cast",
+                            cast_sort,
                             community=community_query,
                         ),
                     }
                     view_urls = {
                         "cast": build_index_url(
                             canonical_username, content_type, score_filter,
+                            history_sort=cast_sort,
                             community=community_query,
                         ),
                         "received": build_index_url(
@@ -347,12 +368,18 @@ def index():
                             community_sort=community_sort,
                         ),
                     }
+                    sort_names = (
+                        ("date", "oldest", "top", "bottom")
+                        if history_view == "received"
+                        else ("date", "oldest")
+                    )
                     sort_urls = {
                         sort_name: build_index_url(
-                            canonical_username, content_type, None, 1, "received",
+                            canonical_username, content_type, score_filter, 1,
+                            history_view,
                             sort_name, community_query,
                         )
-                        for sort_name in ("date", "top", "bottom")
+                        for sort_name in sort_names
                     }
                     community_sort_urls = {
                         sort_name: build_index_url(
@@ -377,7 +404,7 @@ def index():
                                 score_filter,
                                 pagination["prev_page"],
                                 history_view,
-                                received_sort,
+                                history_sort,
                                 community_query,
                             )
                     if pagination["has_next"]:
@@ -395,7 +422,7 @@ def index():
                                 score_filter,
                                 pagination["next_page"],
                                 history_view,
-                                received_sort,
+                                history_sort,
                                 community_query,
                             )
                     community_clear_url = build_index_url(
@@ -404,7 +431,7 @@ def index():
                         score_filter,
                         1,
                         history_view,
-                        received_sort,
+                        history_sort,
                     )
                 else:
                     user_suggestions = find_user_suggestions(
@@ -431,7 +458,7 @@ def index():
         received_items_summary=received_items_summary,
         pagination=pagination,
         history_view=history_view,
-        received_sort=received_sort,
+        history_sort=history_sort,
         content_type=content_type,
         score_filter=score_filter,
         type_urls=type_urls,

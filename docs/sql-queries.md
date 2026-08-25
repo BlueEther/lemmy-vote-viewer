@@ -41,8 +41,8 @@ Raw request values are not interpolated into SQL text.
 | Remote-user lookup | Resolve `username@instance` | `person` |
 | Local-user lookup | Resolve a local username | `person` |
 | `USER_SUGGESTIONS_SQL` | Autocomplete user handles | `person`, `instance` |
-| `USER_VOTES_SQL` | Paginate unfiltered votes cast by a user | Vote, content, community, and person tables |
-| `USER_VOTES_BY_COMMUNITY_SQL` | Paginate community-filtered votes cast by a user | Vote, content, community, and person tables |
+| `USER_VOTES_SQL` / `USER_VOTES_OLDEST_SQL` | Paginate unfiltered votes cast by a user | Vote, content, community, and person tables |
+| `USER_VOTES_BY_COMMUNITY_SQL` / `USER_VOTES_OLDEST_BY_COMMUNITY_SQL` | Paginate community-filtered votes cast by a user | Vote, content, community, and person tables |
 | `USER_SUMMARY_SQL` | Count votes cast and filtered results | Vote, post, and community tables |
 | `USER_RECEIVED_SUMMARY_SQL` | Summarize votes received by a user's content | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_SQL` | Paginate unfiltered content that received votes | Aggregate, content, and community tables |
@@ -163,7 +163,8 @@ Common filters and behavior:
 - Includes only public, active communities.
 - Keeps votes on deleted or removed content but redacts titles, content, and
   author identity as required.
-- Orders newest first with type, post ID, and comment ID tie-breakers.
+- Supports newest-first and oldest-first ordering with type, post ID, and
+  comment ID tie-breakers.
 - Uses `LIMIT` and `OFFSET` after eligibility filtering.
 
 Returned rows contain vote time/type/score, item IDs, redacted post or comment
@@ -252,6 +253,7 @@ content and community details.
 Supported sorts are:
 
 - `date`: aggregate row `published` timestamp, newest first;
+- `oldest`: aggregate row `published` timestamp, oldest first;
 - `top`: `upvotes - downvotes`, highest first; and
 - `bottom`: `downvotes - upvotes`, highest first.
 

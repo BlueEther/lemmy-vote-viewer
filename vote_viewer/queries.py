@@ -87,7 +87,7 @@ eligible_votes AS MATERIALIZED (
 paged_votes AS MATERIALIZED (
     SELECT *
     FROM eligible_votes
-    ORDER BY voted_at DESC, type, post_id, comment_id
+    ORDER BY voted_at {direction}, type, post_id, comment_id
     LIMIT %s OFFSET %s
 )
 SELECT
@@ -140,19 +140,35 @@ JOIN person author
         WHEN pv.type = 'post' THEN p.creator_id
         ELSE cm.creator_id
     END
-ORDER BY pv.voted_at DESC, pv.type, pv.post_id, pv.comment_id
+ORDER BY pv.voted_at {direction}, pv.type, pv.post_id, pv.comment_id
 """
 
 USER_VOTES_SQL = USER_VOTES_SQL_TEMPLATE.format(
     community_parameter="",
     post_community_filter="",
     comment_community_filter="",
+    direction="DESC",
 )
 
 USER_VOTES_BY_COMMUNITY_SQL = USER_VOTES_SQL_TEMPLATE.format(
     community_parameter=", %s::integer AS community_id",
     post_community_filter="AND c.id = f.community_id",
     comment_community_filter="AND c.id = f.community_id",
+    direction="DESC",
+)
+
+USER_VOTES_OLDEST_SQL = USER_VOTES_SQL_TEMPLATE.format(
+    community_parameter="",
+    post_community_filter="",
+    comment_community_filter="",
+    direction="ASC",
+)
+
+USER_VOTES_OLDEST_BY_COMMUNITY_SQL = USER_VOTES_SQL_TEMPLATE.format(
+    community_parameter=", %s::integer AS community_id",
+    post_community_filter="AND c.id = f.community_id",
+    comment_community_filter="AND c.id = f.community_id",
+    direction="ASC",
 )
 
 USER_SUMMARY_SQL = """
@@ -268,6 +284,7 @@ eligible_items AS MATERIALIZED (
         CASE f.received_sort
             WHEN 'top' THEN pa.upvotes - pa.downvotes
             WHEN 'bottom' THEN pa.downvotes - pa.upvotes
+            WHEN 'oldest' THEN -EXTRACT(EPOCH FROM pa.published)
             ELSE EXTRACT(EPOCH FROM pa.published)
         END AS sort_value
     FROM post_aggregates pa
@@ -293,6 +310,7 @@ eligible_items AS MATERIALIZED (
         CASE f.received_sort
             WHEN 'top' THEN ca.upvotes - ca.downvotes
             WHEN 'bottom' THEN ca.downvotes - ca.upvotes
+            WHEN 'oldest' THEN -EXTRACT(EPOCH FROM ca.published)
             ELSE EXTRACT(EPOCH FROM ca.published)
         END AS sort_value
     FROM comment cm

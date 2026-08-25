@@ -124,7 +124,7 @@
       </div>
     </section>
 
-    <nav class="filters" aria-label="Vote filters">
+    <nav class="filters history-filters" aria-label="Vote filters">
       <div class="filter-group">
         <span class="filter-label">History</span>
         <a class="filter-button {{ 'active' if history_view == 'cast' else '' }}" href="{{ view_urls.cast }}">Cast</a>
@@ -144,13 +144,23 @@
       {% if history_view == 'received' %}
         <div class="filter-group">
           <span class="filter-label">Sort</span>
-          <a class="filter-button {{ 'active' if received_sort == 'date' else '' }}" href="{{ sort_urls.date }}">Date</a>
-          <a class="filter-button {{ 'active' if received_sort == 'top' else '' }}" href="{{ sort_urls.top }}">Top</a>
-          <a class="filter-button {{ 'active' if received_sort == 'bottom' else '' }}" href="{{ sort_urls.bottom }}">Bottom</a>
+          <a class="filter-button {{ 'active' if history_sort == 'date' else '' }}" href="{{ sort_urls.date }}">Newest</a>
+          <a class="filter-button {{ 'active' if history_sort == 'oldest' else '' }}" href="{{ sort_urls.oldest }}">Oldest</a>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Score</span>
+          <a class="filter-button {{ 'active' if history_sort in ('date', 'oldest') else '' }}" href="{{ sort_urls.date }}">All</a>
+          <a class="filter-button {{ 'active' if history_sort == 'top' else '' }}" href="{{ sort_urls.top }}">Top</a>
+          <a class="filter-button {{ 'active' if history_sort == 'bottom' else '' }}" href="{{ sort_urls.bottom }}">Bottom</a>
         </div>
       {% endif %}
 
       {% if history_view == 'cast' %}
+        <div class="filter-group">
+          <span class="filter-label">Sort</span>
+          <a class="filter-button {{ 'active' if history_sort == 'date' else '' }}" href="{{ sort_urls.date }}">Newest</a>
+          <a class="filter-button {{ 'active' if history_sort == 'oldest' else '' }}" href="{{ sort_urls.oldest }}">Oldest</a>
+        </div>
         <div class="filter-group">
           <span class="filter-label">Vote</span>
           <a class="filter-button {{ 'active' if score_filter is none else '' }}" href="{{ score_urls.all }}">All</a>
@@ -177,10 +187,11 @@
           {% if content_type != 'all' %}<input type="hidden" name="type" value="{{ content_type }}">{% endif %}
           {% if history_view == 'received' %}
             <input type="hidden" name="view" value="received">
-            {% if received_sort != 'date' %}<input type="hidden" name="sort" value="{{ received_sort }}">{% endif %}
+            {% if history_sort != 'date' %}<input type="hidden" name="sort" value="{{ history_sort }}">{% endif %}
           {% elif score_filter is not none %}
             <input type="hidden" name="score" value="{{ score_filter }}">
           {% endif %}
+          {% if history_view == 'cast' and history_sort != 'date' %}<input type="hidden" name="sort" value="{{ history_sort }}">{% endif %}
           <label class="filter-label" for="community-filter">Community</label>
           <input id="community-filter" name="community" value="{{ community_query }}" aria-label="Community filter" placeholder="!community or !community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false">
           <button type="submit">Apply</button>

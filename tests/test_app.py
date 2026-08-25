@@ -118,7 +118,7 @@ class VoteViewerTests(unittest.TestCase):
             links.build_index_url(
                 "Dave@lemmy.nz",
                 history_view="received",
-                received_sort="top",
+                history_sort="top",
                 app_prefix="/votes",
             ),
             "/votes/?user=Dave%40lemmy.nz&view=received&sort=top",
@@ -145,6 +145,14 @@ class VoteViewerTests(unittest.TestCase):
                 "prev_page": 1,
                 "next_page": 3,
             },
+        )
+        self.assertEqual(
+            links.build_index_url(
+                "Dave@lemmy.nz",
+                history_sort="oldest",
+                app_prefix="/votes",
+            ),
+            "/votes/?user=Dave%40lemmy.nz&sort=oldest",
         )
 
     def request_index(self, path, results, community=None):
@@ -599,22 +607,28 @@ class VoteViewerTests(unittest.TestCase):
             "handle": "!newzealand@lemmy.nz",
         }
         response, database, context = self.request_index(
-            "/?user=Dave%40lemmy.nz&community=!newzealand%40lemmy.nz",
+            "/?user=Dave%40lemmy.nz&sort=oldest"
+            "&community=!newzealand%40lemmy.nz",
             [cast, received, []],
             community=community,
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(database.queries[2][0], queries.USER_VOTES_BY_COMMUNITY_SQL)
+        self.assertEqual(
+            database.queries[2][0],
+            queries.USER_VOTES_OLDEST_BY_COMMUNITY_SQL,
+        )
         self.assertEqual(
             database.queries[2][1],
             ("all", None, 77, 42, 42, viewer.CONFIG.page_size, 0),
         )
         self.assertEqual(context["community_query"], "!newzealand@lemmy.nz")
         self.assertEqual(context["community"], community)
+        self.assertEqual(context["history_sort"], "oldest")
+        self.assertIn("sort=oldest", context["community_clear_url"])
 
     def test_index_received_view_selects_sort_and_ignores_score(self):
-        for sort_name in ("date", "top", "bottom"):
+        for sort_name in ("date", "oldest", "top", "bottom"):
             with self.subTest(sort=sort_name):
                 cast, received = self.user_summaries(filtered_items=2)
                 path = (
@@ -635,7 +649,7 @@ class VoteViewerTests(unittest.TestCase):
                     ("post", sort_name, 42, 42, viewer.CONFIG.page_size, 0),
                 )
                 self.assertIsNone(context["score_filter"])
-                self.assertEqual(context["received_sort"], sort_name)
+                self.assertEqual(context["history_sort"], sort_name)
 
     def test_index_received_view_selects_community_filtered_query(self):
         cast, received = self.user_summaries(filtered_items=250)
@@ -818,8 +832,13 @@ class VoteViewerTests(unittest.TestCase):
 
     def test_unfiltered_history_queries_keep_community_out_of_filter_cte(self):
         self.assertNotIn("f.community_id", queries.USER_VOTES_SQL)
+        self.assertNotIn("f.community_id", queries.USER_VOTES_OLDEST_SQL)
         self.assertNotIn("f.community_id", queries.USER_RECEIVED_ITEMS_SQL)
         self.assertIn("f.community_id", queries.USER_VOTES_BY_COMMUNITY_SQL)
+        self.assertIn(
+            "f.community_id",
+            queries.USER_VOTES_OLDEST_BY_COMMUNITY_SQL,
+        )
         self.assertIn(
             "f.community_id",
             queries.USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,

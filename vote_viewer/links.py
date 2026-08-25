@@ -134,7 +134,7 @@ def build_index_url(
     score_filter=None,
     page=1,
     history_view="cast",
-    received_sort="date",
+    history_sort="date",
     community=None,
     community_sort="total",
     app_prefix="",
@@ -142,12 +142,14 @@ def build_index_url(
     params = {"user": username}
     if history_view == "received":
         params["view"] = "received"
-        if received_sort != "date":
-            params["sort"] = received_sort
+        if history_sort != "date":
+            params["sort"] = history_sort
     elif history_view == "communities":
         params["view"] = "communities"
         if community_sort != "total":
             params["sort"] = community_sort
+    elif history_sort != "date":
+        params["sort"] = history_sort
     if content_type != "all":
         params["type"] = content_type
     if score_filter is not None:
