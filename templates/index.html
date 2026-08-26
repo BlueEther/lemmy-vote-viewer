@@ -169,7 +169,7 @@
           <a class="filter-button {{ 'active' if community_sort == 'cast' else '' }}" href="{{ community_sort_urls.cast }}">Cast</a>
           <a class="filter-button {{ 'active' if community_sort == 'received' else '' }}" href="{{ community_sort_urls.received }}">Received</a>
           <a class="filter-button {{ 'active' if community_sort == 'down' else '' }}" href="{{ community_sort_urls.down }}">Downvotes</a>
-          <a class="filter-button {{ 'active' if community_sort == 'name' else '' }}" href="{{ community_sort_urls.name }}">Community</a>
+          <a class="filter-button {{ 'active' if community_sort == 'name' else '' }}" href="{{ community_sort_urls.name }}">Community Name</a>
         </div>
       {% else %}
         <form method="get" action="{{ app_prefix }}/" class="filter-group community-filter">
