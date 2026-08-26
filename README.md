@@ -100,6 +100,10 @@ instance overview.
 - Add date-range filtering.
 - Add a health-check endpoint.
 - Add short-lived caching for expensive instance and community overviews.
+- Add configured-window post and comment totals to instance-overview user
+  rows. The current prototype exceeds the 12-second query-time limit on cold
+  `lemmy.world` requests, so it needs further SQL optimization before it can be
+  enabled safely.
 
 ### Documentation and operations
 

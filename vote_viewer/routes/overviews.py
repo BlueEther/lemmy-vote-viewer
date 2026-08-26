@@ -159,7 +159,6 @@ def community_overview(community_handle):
                 overview_sql,
                 (
                     community["id"],
-                    community["id"],
                     requested_offset,
                     requested_offset + settings.page_size,
                 ),
