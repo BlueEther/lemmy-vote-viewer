@@ -69,6 +69,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.lemmy_internal_url, "http://lemmy:8536")
         self.assertEqual(config.lemmy_login_url, "https://Lemmy.Example/login")
 
+    def test_disabled_features_do_not_require_an_authentication_provider(self):
+        config = self.load(
+            AUTH_SEARCH_REQUIRE="DISABLED",
+            AUTH_INSTANCE_REQUIRE="disabled",
+        )
+
+        self.assertEqual(config.auth_provider, "none")
+        self.assertEqual(config.auth_search_require, "disabled")
+        self.assertEqual(config.auth_instance_require, "disabled")
+
     def test_invalid_settings_raise_the_existing_startup_errors(self):
         invalid_settings = (
             ({"ENABLE_DOMAIN_SEARCH": "yes"}, "must be either true or false"),

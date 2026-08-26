@@ -100,8 +100,8 @@ Startup intentionally fails for some invalid values. Common examples include:
 
 - `ENABLE_DOMAIN_SEARCH` must be exactly `true` or `false`;
 - `AUTH_PROVIDER` must be `none` or `lemmy`;
-- authentication requirements must be `none`, `login`, `allowlist`, or
-  `admin`;
+- authentication requirements must be `disabled`, `none`, `login`,
+  `allowlist`, or `admin`;
 - protected routes require `AUTH_PROVIDER=lemmy`;
 - Lemmy public and internal URLs must be HTTP(S) origins with a valid numeric
   port and no credentials, path, query, or fragment; and
@@ -114,6 +114,10 @@ Compose environment values:
 docker compose up -d --force-recreate
 docker logs --tail=100 lemmy-vote-viewer
 ```
+
+`disabled` and `none` are intentionally different: `disabled` turns the
+corresponding feature off and makes its routes return HTTP 404, while `none`
+keeps the feature available without requiring authentication.
 
 ## The UI shows an old version
 

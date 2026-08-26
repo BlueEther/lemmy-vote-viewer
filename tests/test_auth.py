@@ -5,6 +5,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from flask import Flask
+from werkzeug.exceptions import NotFound
+
 from vote_viewer.auth import (
     AuthenticationUnavailable,
     AuthManager,
@@ -42,6 +45,21 @@ def auth_config(**overrides):
 
 
 class AuthTests(unittest.TestCase):
+    def test_disabled_requirement_returns_404_without_authentication(self):
+        manager = AuthManager(auth_config(), http_opener=Mock())
+        manager.authenticated_user = Mock()
+
+        with Flask(__name__).test_request_context("/"):
+            with self.assertRaises(NotFound):
+                manager.enforce_access("disabled")
+
+        manager.authenticated_user.assert_not_called()
+        self.assertFalse(
+            manager.access_requirement_met(
+                {"username": "Admin", "admin": True}, "disabled"
+            )
+        )
+
     def test_authentication_redirects_remain_disabled(self):
         handler = NoAuthRedirectHandler()
         self.assertIsNone(

@@ -110,6 +110,10 @@ AUTH_SEARCH_REQUIRE=login
 AUTH_INSTANCE_REQUIRE=admin
 ```
 
+Each requirement can instead be `disabled` to turn its corresponding feature
+off, or `none` to make it public. Disabled routes return HTTP 404 before
+authentication and database access.
+
 The viewer does not accept Lemmy passwords or possess Lemmy's JWT signing
 secret. It reads the configured cookie and validates the bearer token against
 the configured Lemmy API. The browser must send the Lemmy cookie to the viewer,

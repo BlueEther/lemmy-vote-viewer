@@ -8,7 +8,9 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-AUTH_REQUIREMENTS = frozenset({"none", "login", "allowlist", "admin"})
+AUTH_REQUIREMENTS = frozenset(
+    {"disabled", "none", "login", "allowlist", "admin"}
+)
 
 
 @dataclass(frozen=True)
@@ -158,8 +160,10 @@ def load_config(environ=None, project_root=None):
     auth_instance_require = auth_requirement_env(
         environ, "AUTH_INSTANCE_REQUIRE"
     )
+    authentication_required = {"login", "allowlist", "admin"}
     if auth_provider == "none" and (
-        auth_search_require != "none" or auth_instance_require != "none"
+        auth_search_require in authentication_required
+        or auth_instance_require in authentication_required
     ):
         raise RuntimeError(
             "AUTH_PROVIDER must be lemmy when an authentication requirement "
