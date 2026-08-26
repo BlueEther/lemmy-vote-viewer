@@ -241,6 +241,13 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(self.client.get("/item/post/1").status_code, 401)
         self.assertEqual(self.client.get("/item/comment/1").status_code, 401)
 
+    def test_not_found_explains_federation_requirement(self):
+        response = self.client.get("/route-that-does-not-exist")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"content already known to this Lemmy instance", response.data)
+        self.assertIn(b"must have federated here first", response.data)
+
     def test_disabled_requirements_hide_routes_before_database_access(self):
         self.client.set_cookie("jwt", "test-token")
         cases = (

@@ -27,7 +27,11 @@ ERROR_MESSAGES = {
     400: "The request could not be understood.",
     401: "Log in to the local Lemmy instance to use this viewer.",
     403: "Your Lemmy account does not have permission to view this page.",
-    404: "The requested page or item was not found.",
+    404: (
+        "The requested page or item was not found. The viewer can only show "
+        "content already known to this Lemmy instance; remote users, "
+        "communities, posts, and comments must have federated here first."
+    ),
     500: "The viewer encountered an unexpected error.",
     503: "The database query took too long. Please try again later.",
 }

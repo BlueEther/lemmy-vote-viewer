@@ -48,7 +48,7 @@ contains the database password.
 | 400 | An input exceeded its limit or could not be parsed. |
 | 401 | Lemmy authentication is required, but no valid active account was found. |
 | 403 | The account is authenticated but does not satisfy the configured requirement. |
-| 404 | The route, item, user-facing feature, instance, or community is unavailable. |
+| 404 | The route, item, user-facing feature, instance, or community is unavailable. Remote content may not have federated to the local Lemmy instance yet. |
 | 500 | An unexpected application, schema, grant, or database error occurred. |
 | 503 | A database query timed out or the Lemmy authentication service was unavailable. |
 

@@ -118,6 +118,11 @@ Requests the search page without a JWT cookie and verifies that it returns HTTP
 Requests both a post-voter route and a comment-voter route anonymously. It
 verifies that both return HTTP 401 before attempting database access.
 
+### `test_not_found_explains_federation_requirement`
+
+Requests an unknown route and verifies that the HTTP 404 page explains that
+remote content must already have federated to the local Lemmy instance.
+
 ### `test_disabled_requirements_hide_routes_before_database_access`
 
 Sets each feature requirement to `disabled` and verifies that representative
