@@ -133,7 +133,8 @@ parameters, rendered item type, and second-page state.
 
 Exercises a successful administrator-only instance overview. It verifies
 domain normalization, controlled sort interpolation, the per-query statement
-timeout override, exact page bounds, and rendered pagination state.
+timeout override, exact page bounds, rendered pagination state, and
+configured-window post and comment totals for each paginated user.
 
 ### `test_community_overview_selects_sort_timeout_and_page`
 
