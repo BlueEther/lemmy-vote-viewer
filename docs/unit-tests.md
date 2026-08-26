@@ -139,8 +139,9 @@ timeout override, exact page bounds, and rendered pagination state.
 
 Exercises a successful administrator-only community overview. It verifies
 controlled sort interpolation, the statement timeout override, exact community
-and page parameters, local and remote community links, and rendered pagination
-state.
+and page parameters, local and remote community links, rendered pagination
+state, and community-scoped post and comment counts limited to the configured
+vote window in each user row.
 
 ### `test_user_summary_shows_post_and_comment_counts`
 

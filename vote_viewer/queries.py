@@ -509,11 +509,14 @@ LIMIT %s OFFSET %s
 """
 
 COMMUNITY_OVERVIEW_SQL = """
-WITH source_votes AS (
+WITH target_community AS MATERIALIZED (
+    SELECT %s::integer AS id
+),
+source_votes AS (
     SELECT pl.person_id, pl.score, pl.published AS voted_at
     FROM post_like pl
     JOIN post p ON p.id = pl.post_id
-    WHERE p.community_id = %s
+    WHERE p.community_id = (SELECT id FROM target_community)
       AND pl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
 
     UNION ALL
@@ -521,7 +524,7 @@ WITH source_votes AS (
     SELECT cl.person_id, cl.score, cl.published AS voted_at
     FROM comment_like cl
     JOIN post p ON p.id = cl.post_id
-    WHERE p.community_id = %s
+    WHERE p.community_id = (SELECT id FROM target_community)
       AND cl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
 ),
 vote_totals AS MATERIALIZED (
@@ -566,11 +569,37 @@ ranked_users AS (
         ROW_NUMBER() OVER (ORDER BY {order_by}) AS sort_position
     FROM active_voters av
 ),
-paged_users AS (
+paged_users AS MATERIALIZED (
     SELECT *
     FROM ranked_users
     WHERE sort_position > %s
       AND sort_position <= %s
+),
+authored_post_counts AS MATERIALIZED (
+    SELECT authored_post.creator_id, COUNT(*)::bigint AS post_count
+    FROM post_aggregates authored_post
+    JOIN paged_users pu ON pu.id = authored_post.creator_id
+    WHERE authored_post.community_id = (
+        SELECT id FROM target_community
+    )
+      AND authored_post.published
+        >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
+    GROUP BY authored_post.creator_id
+),
+authored_comment_counts AS MATERIALIZED (
+    SELECT authored_comment.creator_id, COUNT(*)::bigint AS comment_count
+    FROM post parent_post
+    JOIN comment authored_comment
+      ON authored_comment.post_id = parent_post.id
+    JOIN comment_aggregates authored_comment_aggregate
+      ON authored_comment_aggregate.comment_id = authored_comment.id
+    JOIN paged_users pu ON pu.id = authored_comment.creator_id
+    WHERE parent_post.community_id = (
+        SELECT id FROM target_community
+    )
+      AND authored_comment_aggregate.published
+        >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
+    GROUP BY authored_comment.creator_id
 )
 SELECT
     summary.voting_users,
@@ -588,9 +617,13 @@ SELECT
     pu.down,
     pu.neutral,
     pu.latest_vote,
+    COALESCE(apc.post_count, 0)::bigint AS post_count,
+    COALESCE(acc.comment_count, 0)::bigint AS comment_count,
     pu.sort_position
 FROM summary
 LEFT JOIN paged_users pu ON true
+LEFT JOIN authored_post_counts apc ON apc.creator_id = pu.id
+LEFT JOIN authored_comment_counts acc ON acc.creator_id = pu.id
 ORDER BY pu.sort_position
 """
 

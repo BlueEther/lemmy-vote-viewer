@@ -460,6 +460,10 @@ button { cursor: pointer; }
   overflow-wrap: anywhere;
 }
 
+.instance-user .content-counts {
+  font-size: .8rem;
+}
+
 .instance-history { white-space: nowrap; }
 
 .community-summary-table .community-cast-row td:not([rowspan]) {
