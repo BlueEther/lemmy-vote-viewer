@@ -76,8 +76,10 @@ def build_index_url(
     )
 
 
-def build_item_url(kind, item_id, page=1):
-    return _build_item_url(kind, item_id, page, config().app_prefix)
+def build_item_url(kind, item_id, page=1, sort="vote"):
+    return _build_item_url(
+        kind, item_id, page, config().app_prefix, sort
+    )
 
 
 def build_instance_url(domain, sort="total", page=1):

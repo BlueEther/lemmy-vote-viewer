@@ -795,7 +795,7 @@ WHERE cm.id = %s
 LIMIT 1
 """
 
-POST_VOTERS_SQL = """
+POST_VOTERS_SQL_TEMPLATE = """
 SELECT
     pl.published AS voted_at,
     pl.score,
@@ -808,11 +808,11 @@ FROM post_like pl
 JOIN person voter ON voter.id = pl.person_id
 WHERE pl.post_id = %s
   AND voter.deleted = false
-ORDER BY pl.score DESC, lower(voter.name), voter.id
+ORDER BY {order_by}
 LIMIT %s OFFSET %s
 """
 
-COMMENT_VOTERS_SQL = """
+COMMENT_VOTERS_SQL_TEMPLATE = """
 SELECT
     cl.published AS voted_at,
     cl.score,
@@ -825,9 +825,44 @@ FROM comment_like cl
 JOIN person voter ON voter.id = cl.person_id
 WHERE cl.comment_id = %s
   AND voter.deleted = false
-ORDER BY cl.score DESC, lower(voter.name), voter.id
+ORDER BY {order_by}
 LIMIT %s OFFSET %s
 """
+
+ITEM_VOTER_SORTS = ("vote", "newest", "oldest", "username")
+
+POST_VOTERS_SQL_BY_SORT = {
+    "vote": POST_VOTERS_SQL_TEMPLATE.format(
+        order_by="pl.score DESC, lower(voter.name), voter.id"
+    ),
+    "newest": POST_VOTERS_SQL_TEMPLATE.format(
+        order_by="pl.published DESC, lower(voter.name), voter.id"
+    ),
+    "oldest": POST_VOTERS_SQL_TEMPLATE.format(
+        order_by="pl.published ASC, lower(voter.name), voter.id"
+    ),
+    "username": POST_VOTERS_SQL_TEMPLATE.format(
+        order_by="lower(voter.name), voter.id"
+    ),
+}
+
+COMMENT_VOTERS_SQL_BY_SORT = {
+    "vote": COMMENT_VOTERS_SQL_TEMPLATE.format(
+        order_by="cl.score DESC, lower(voter.name), voter.id"
+    ),
+    "newest": COMMENT_VOTERS_SQL_TEMPLATE.format(
+        order_by="cl.published DESC, lower(voter.name), voter.id"
+    ),
+    "oldest": COMMENT_VOTERS_SQL_TEMPLATE.format(
+        order_by="cl.published ASC, lower(voter.name), voter.id"
+    ),
+    "username": COMMENT_VOTERS_SQL_TEMPLATE.format(
+        order_by="lower(voter.name), voter.id"
+    ),
+}
+
+POST_VOTERS_SQL = POST_VOTERS_SQL_BY_SORT["vote"]
+COMMENT_VOTERS_SQL = COMMENT_VOTERS_SQL_BY_SORT["vote"]
 
 POST_VOTER_SUMMARY_SQL = """
 SELECT

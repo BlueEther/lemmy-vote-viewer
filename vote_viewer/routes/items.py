@@ -1,14 +1,15 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from flask import Blueprint, abort, render_template
+from flask import Blueprint, abort, render_template, request
 
 from ..queries import (
     COMMENT_ITEM_SQL,
-    COMMENT_VOTERS_SQL,
+    COMMENT_VOTERS_SQL_BY_SORT,
     COMMENT_VOTER_SUMMARY_SQL,
+    ITEM_VOTER_SORTS,
     POST_ITEM_SQL,
-    POST_VOTERS_SQL,
+    POST_VOTERS_SQL_BY_SORT,
     POST_VOTER_SUMMARY_SQL,
 )
 from ..services import enrich_item, enrich_voter
@@ -27,20 +28,24 @@ blueprint = Blueprint("items", __name__)
 
 def item_votes(kind, item_id):
     requested_page = parse_page()
+    voter_sort = request.args.get("sort", "vote")
+    if voter_sort not in ITEM_VOTER_SORTS:
+        voter_sort = "vote"
     if kind == "post":
-        item_sql, summary_sql, voters_sql = (
+        item_sql, summary_sql, voters_sql_by_sort = (
             POST_ITEM_SQL,
             POST_VOTER_SUMMARY_SQL,
-            POST_VOTERS_SQL,
+            POST_VOTERS_SQL_BY_SORT,
         )
     elif kind == "comment":
-        item_sql, summary_sql, voters_sql = (
+        item_sql, summary_sql, voters_sql_by_sort = (
             COMMENT_ITEM_SQL,
             COMMENT_VOTER_SUMMARY_SQL,
-            COMMENT_VOTERS_SQL,
+            COMMENT_VOTERS_SQL_BY_SORT,
         )
     else:
         abort(404)
+    voters_sql = voters_sql_by_sort[voter_sort]
 
     with db() as conn:
         with conn.cursor() as cur:
@@ -65,12 +70,17 @@ def item_votes(kind, item_id):
 
     if pagination["has_prev"]:
         pagination["prev_url"] = build_item_url(
-            kind, item_id, pagination["prev_page"]
+            kind, item_id, pagination["prev_page"], voter_sort
         )
     if pagination["has_next"]:
         pagination["next_url"] = build_item_url(
-            kind, item_id, pagination["next_page"]
+            kind, item_id, pagination["next_page"], voter_sort
         )
+
+    sort_urls = {
+        sort_name: build_item_url(kind, item_id, sort=sort_name)
+        for sort_name in ITEM_VOTER_SORTS
+    }
 
     return render_template(
         "item.html",
@@ -80,6 +90,8 @@ def item_votes(kind, item_id):
         rows=rows,
         summary=summary,
         pagination=pagination,
+        voter_sort=voter_sort,
+        sort_urls=sort_urls,
     )
 
 

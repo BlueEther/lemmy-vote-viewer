@@ -75,6 +75,16 @@
     </div>
   </section>
 
+  <nav class="filters" aria-label="Voter sorting">
+    <div class="filter-group">
+      <span class="filter-label">Sort</span>
+      <a class="filter-button {{ 'active' if voter_sort == 'vote' else '' }}" href="{{ sort_urls.vote }}">Vote</a>
+      <a class="filter-button {{ 'active' if voter_sort == 'newest' else '' }}" href="{{ sort_urls.newest }}">Newest</a>
+      <a class="filter-button {{ 'active' if voter_sort == 'oldest' else '' }}" href="{{ sort_urls.oldest }}">Oldest</a>
+      <a class="filter-button {{ 'active' if voter_sort == 'username' else '' }}" href="{{ sort_urls.username }}">Username</a>
+    </div>
+  </nav>
+
   <section>
     {% for row in rows %}
       <div class="voter">

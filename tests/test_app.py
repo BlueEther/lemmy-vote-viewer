@@ -154,6 +154,13 @@ class VoteViewerTests(unittest.TestCase):
             ),
             "/votes/?user=Dave%40lemmy.nz&sort=oldest",
         )
+        self.assertEqual(
+            links.build_item_url(
+                "comment", 456, page=3, sort="oldest",
+                app_prefix="/votes",
+            ),
+            "/votes/item/comment/456?sort=oldest&page=3",
+        )
 
     def request_index(self, path, results, community=None):
         database = ScriptedDatabase(results)
@@ -242,17 +249,35 @@ class VoteViewerTests(unittest.TestCase):
                 queries.POST_ITEM_SQL,
                 queries.POST_VOTER_SUMMARY_SQL,
                 queries.POST_VOTERS_SQL,
+                "vote",
             ),
             (
                 "comment",
-                "/item/comment/456?page=2",
+                "/item/comment/456?sort=oldest&page=2",
                 queries.COMMENT_ITEM_SQL,
                 queries.COMMENT_VOTER_SUMMARY_SQL,
-                queries.COMMENT_VOTERS_SQL,
+                queries.COMMENT_VOTERS_SQL_BY_SORT["oldest"],
+                "oldest",
+            ),
+            (
+                "post",
+                "/item/post/123?sort=newest&page=2",
+                queries.POST_ITEM_SQL,
+                queries.POST_VOTER_SUMMARY_SQL,
+                queries.POST_VOTERS_SQL_BY_SORT["newest"],
+                "newest",
+            ),
+            (
+                "comment",
+                "/item/comment/456?sort=username&page=2",
+                queries.COMMENT_ITEM_SQL,
+                queries.COMMENT_VOTER_SUMMARY_SQL,
+                queries.COMMENT_VOTERS_SQL_BY_SORT["username"],
+                "username",
             ),
         )
-        for kind, path, item_sql, summary_sql, voters_sql in cases:
-            with self.subTest(kind=kind):
+        for kind, path, item_sql, summary_sql, voters_sql, voter_sort in cases:
+            with self.subTest(kind=kind, sort=voter_sort):
                 item_id = 123 if kind == "post" else 456
                 database = ScriptedDatabase(
                     [
@@ -307,7 +332,16 @@ class VoteViewerTests(unittest.TestCase):
                 self.assertEqual(context["template_name"], "item.html")
                 self.assertEqual(context["kind"], kind)
                 self.assertEqual(context["item_id"], item_id)
+                self.assertEqual(context["voter_sort"], voter_sort)
                 self.assertEqual(context["pagination"]["page"], 2)
+                self.assertEqual(
+                    context["pagination"]["prev_url"],
+                    links.build_item_url(kind, item_id, sort=voter_sort),
+                )
+                self.assertEqual(
+                    context["sort_urls"]["username"],
+                    links.build_item_url(kind, item_id, sort="username"),
+                )
 
     def test_instance_overview_selects_sort_timeout_and_page(self):
         overview = {
@@ -971,6 +1005,13 @@ class VoteViewerTests(unittest.TestCase):
             "rows": [],
             "summary": {"up": 0, "down": 0, "neutral": 0, "total": 0},
             "pagination": {"page_count": 1},
+            "voter_sort": "vote",
+            "sort_urls": {
+                sort_name: links.build_item_url(
+                    "post", 123, sort=sort_name
+                )
+                for sort_name in queries.ITEM_VOTER_SORTS
+            },
         }
 
         with viewer.app.test_request_context("/item/post/123"):

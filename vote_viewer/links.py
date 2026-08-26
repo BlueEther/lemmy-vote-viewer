@@ -160,9 +160,14 @@ def build_index_url(
         params["page"] = str(page)
     return f"{app_prefix}/?{urlencode(params)}"
 
-def build_item_url(kind, item_id, page=1, app_prefix=""):
+def build_item_url(kind, item_id, page=1, app_prefix="", sort="vote"):
     path = f"{app_prefix}/item/{kind}/{item_id}"
-    return f"{path}?{urlencode({'page': page})}" if page > 1 else path
+    params = {}
+    if sort != "vote":
+        params["sort"] = sort
+    if page > 1:
+        params["page"] = str(page)
+    return f"{path}?{urlencode(params)}" if params else path
 
 def build_instance_url(domain, sort="total", page=1, app_prefix=""):
     path = f"{app_prefix}/instance/{quote(domain, safe='.-')}"
