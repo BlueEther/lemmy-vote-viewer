@@ -70,6 +70,9 @@
                 {% if row.remote_url %}
                   <a class="remote" title="Open profile on its original instance" href="{{ row.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
                 {% endif %}
+                {% if content_counts_enabled %}
+                  <span class="content-counts muted">{{ vote_window_days }} Day Total — Posts: {{ row.post_count }} Comments: {{ row.comment_count }}</span>
+                {% endif %}
                 <span class="muted">@{{ row.handle }}</span>
               </td>
               <td class="numeric">{{ row.total }}</td>

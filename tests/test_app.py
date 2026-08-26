@@ -377,6 +377,17 @@ class VoteViewerTests(unittest.TestCase):
             "summary_down": 50,
             "summary_neutral": 0,
             "id": 42,
+            "name": "BlueEther",
+            "display_name": "BlueEther",
+            "local": False,
+            "actor_id": "https://lemmy.nz/u/BlueEther",
+            "total": 20,
+            "up": 15,
+            "down": 5,
+            "neutral": 0,
+            "latest_vote": None,
+            "post_count": 12,
+            "comment_count": 34,
         }
         database = ScriptedDatabase(
             [
@@ -394,11 +405,6 @@ class VoteViewerTests(unittest.TestCase):
 
         with (
             patch.object(overview_routes, "db", return_value=database),
-            patch.object(
-                overview_routes,
-                "enrich_instance_user",
-                side_effect=lambda row, app_prefix: dict(row),
-            ),
             patch.object(
                 overview_routes,
                 "render_template",
@@ -424,7 +430,12 @@ class VoteViewerTests(unittest.TestCase):
                         order_by=queries.INSTANCE_SORTS["down"],
                         vote_window_days=viewer.CONFIG.instance_vote_window_days,
                     ),
-                    (9, viewer.CONFIG.page_size, viewer.CONFIG.page_size * 2),
+                    (
+                        9,
+                        viewer.CONFIG.enable_instance_content_counts,
+                        viewer.CONFIG.page_size,
+                        viewer.CONFIG.page_size * 2,
+                    ),
                 ),
             ],
         )
@@ -432,6 +443,30 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(context["domain"], "lemmy.nz")
         self.assertEqual(context["sort"], "down")
         self.assertEqual(context["pagination"]["page"], 2)
+        self.assertTrue(context["content_counts_enabled"])
+        overview_sql = database.queries[2][0]
+        self.assertIn("authored_post.published", overview_sql)
+        self.assertIn("authored_comment_aggregate.published", overview_sql)
+
+        with viewer.app.test_request_context("/"):
+            with patch.object(
+                AUTH_MANAGER,
+                "authenticated_user",
+                return_value={"username": "Admin", "admin": True},
+            ):
+                html = viewer.render_template("instance.html", **context)
+        name_position = html.index(">BlueEther</a>")
+        counts_position = html.index(
+            "30 Day Total — Posts: 12 Comments: 34"
+        )
+        handle_position = html.index("@BlueEther@lemmy.nz")
+        self.assertLess(name_position, counts_position)
+        self.assertLess(counts_position, handle_position)
+
+        context["content_counts_enabled"] = False
+        with viewer.app.test_request_context("/"):
+            html = viewer.render_template("instance.html", **context)
+        self.assertNotIn("Day Total — Posts:", html)
 
     def test_community_overview_selects_sort_timeout_and_page(self):
         community = {
@@ -502,6 +537,7 @@ class VoteViewerTests(unittest.TestCase):
                     ),
                     (
                         77,
+                        viewer.CONFIG.enable_community_content_counts,
                         viewer.CONFIG.page_size,
                         viewer.CONFIG.page_size * 2,
                     ),
@@ -519,6 +555,7 @@ class VoteViewerTests(unittest.TestCase):
         )
         self.assertEqual(context["sort"], "recent")
         self.assertEqual(context["pagination"]["page"], 2)
+        self.assertTrue(context["content_counts_enabled"])
         overview_sql = database.queries[1][0]
         self.assertIn("authored_post.community_id", overview_sql)
         self.assertIn("parent_post.community_id", overview_sql)
@@ -539,6 +576,11 @@ class VoteViewerTests(unittest.TestCase):
         handle_position = html.index("@BlueEther@lemmy.nz")
         self.assertLess(name_position, counts_position)
         self.assertLess(counts_position, handle_position)
+
+        context["content_counts_enabled"] = False
+        with viewer.app.test_request_context("/"):
+            html = viewer.render_template("community.html", **context)
+        self.assertNotIn("Day Total — Posts:", html)
 
     def test_user_summary_shows_post_and_comment_counts(self):
         user = {

@@ -100,10 +100,6 @@ instance overview.
 - Add date-range filtering.
 - Add a health-check endpoint.
 - Add short-lived caching for expensive instance and community overviews.
-- Add configured-window post and comment totals to instance-overview user
-  rows. The current prototype exceeds the 12-second query-time limit on cold
-  `lemmy.world` requests, so it needs further SQL optimization before it can be
-  enabled safely.
 
 ### Documentation and operations
 
@@ -195,6 +191,8 @@ DATABASE_URL=postgresql://vote_viewer:STRONG_PASSWORD@postgres:5432/lemmy
 APP_PREFIX=/votes
 PAGE_SIZE=100
 ENABLE_DOMAIN_SEARCH=false
+ENABLE_INSTANCE_CONTENT_COUNTS=true
+ENABLE_COMMUNITY_CONTENT_COUNTS=true
 INSTANCE_QUERY_TIMEOUT_SECONDS=12
 INSTANCE_VOTE_WINDOW_DAYS=30
 LEMMY_NETWORK=lemmy-easy-deploy_default
@@ -225,6 +223,10 @@ cp .env.example .env
   When disabled, the instance search and community-overview links are removed
   from the UI, and direct `/instance/<domain>` and `/community/<handle>`
   requests return 404.
+- `ENABLE_INSTANCE_CONTENT_COUNTS` and `ENABLE_COMMUNITY_CONTENT_COUNTS`
+  accept `true` or `false` and default to `true`. Set the relevant flag to
+  `false` to hide post/comment totals and skip their additional database work
+  on instance or community overview pages.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance-overview query.
   It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
   below the Gunicorn worker timeout.

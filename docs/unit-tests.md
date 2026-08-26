@@ -72,8 +72,9 @@ Flask request or application configuration imports.
 ### `test_defaults_are_preserved`
 
 Loads configuration from only the required database setting and verifies the
-existing prefix, page size, query timeout, vote window, timezone, feature flag,
-authentication, cookie, cache, request-timeout, and Lemmy URL defaults.
+existing prefix, page size, query timeout, vote window, timezone, domain-search
+and content-count feature flags, authentication, cookie, cache, request-timeout,
+and Lemmy URL defaults.
 
 ### `test_values_are_normalized_bounded_and_fallback_on_bad_numbers`
 
@@ -133,7 +134,9 @@ parameters, rendered item type, and second-page state.
 
 Exercises a successful administrator-only instance overview. It verifies
 domain normalization, controlled sort interpolation, the per-query statement
-timeout override, exact page bounds, and rendered pagination state.
+timeout override, exact page bounds, rendered pagination state, and
+configured-window post and comment totals for each paginated user. It also
+verifies that the count line is hidden when instance content counts are off.
 
 ### `test_community_overview_selects_sort_timeout_and_page`
 
@@ -141,7 +144,8 @@ Exercises a successful administrator-only community overview. It verifies
 controlled sort interpolation, the statement timeout override, exact community
 and page parameters, local and remote community links, rendered pagination
 state, and community-scoped post and comment counts limited to the configured
-vote window in each user row.
+vote window in each user row. It also verifies that the count line is hidden
+when community content counts are off.
 
 ### `test_user_summary_shows_post_and_comment_counts`
 

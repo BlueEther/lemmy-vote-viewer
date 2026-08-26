@@ -18,6 +18,8 @@ class AppConfig:
     app_version: str
     database_url: str
     enable_domain_search: bool
+    enable_instance_content_counts: bool
+    enable_community_content_counts: bool
     app_prefix: str
     page_size: int
     instance_query_timeout_seconds: int
@@ -114,6 +116,12 @@ def load_config(environ=None, project_root=None):
     enable_domain_search = boolean_env(
         environ, "ENABLE_DOMAIN_SEARCH", False
     )
+    enable_instance_content_counts = boolean_env(
+        environ, "ENABLE_INSTANCE_CONTENT_COUNTS", True
+    )
+    enable_community_content_counts = boolean_env(
+        environ, "ENABLE_COMMUNITY_CONTENT_COUNTS", True
+    )
 
     raw_prefix = environ.get("APP_PREFIX", "/votes").strip()
     app_prefix = "" if raw_prefix in ("", "/") else "/" + raw_prefix.strip("/")
@@ -204,6 +212,8 @@ def load_config(environ=None, project_root=None):
         app_version=app_version,
         database_url=database_url,
         enable_domain_search=enable_domain_search,
+        enable_instance_content_counts=enable_instance_content_counts,
+        enable_community_content_counts=enable_community_content_counts,
         app_prefix=app_prefix,
         page_size=page_size,
         instance_query_timeout_seconds=instance_query_timeout_seconds,

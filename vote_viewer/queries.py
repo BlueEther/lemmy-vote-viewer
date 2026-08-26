@@ -510,7 +510,9 @@ LIMIT %s OFFSET %s
 
 COMMUNITY_OVERVIEW_SQL = """
 WITH target_community AS MATERIALIZED (
-    SELECT %s::integer AS id
+    SELECT
+        %s::integer AS id,
+        %s::boolean AS content_counts_enabled
 ),
 source_votes AS (
     SELECT pl.person_id, pl.score, pl.published AS voted_at
@@ -579,7 +581,8 @@ authored_post_counts AS MATERIALIZED (
     SELECT authored_post.creator_id, COUNT(*)::bigint AS post_count
     FROM post_aggregates authored_post
     JOIN paged_users pu ON pu.id = authored_post.creator_id
-    WHERE authored_post.community_id = (
+    WHERE (SELECT content_counts_enabled FROM target_community)
+      AND authored_post.community_id = (
         SELECT id FROM target_community
     )
       AND authored_post.published
@@ -594,7 +597,8 @@ authored_comment_counts AS MATERIALIZED (
     JOIN comment_aggregates authored_comment_aggregate
       ON authored_comment_aggregate.comment_id = authored_comment.id
     JOIN paged_users pu ON pu.id = authored_comment.creator_id
-    WHERE parent_post.community_id = (
+    WHERE (SELECT content_counts_enabled FROM target_community)
+      AND parent_post.community_id = (
         SELECT id FROM target_community
     )
       AND authored_comment_aggregate.published
@@ -658,7 +662,9 @@ LIMIT 1
 
 INSTANCE_OVERVIEW_SQL = """
 WITH target_instance AS MATERIALIZED (
-    SELECT %s::integer AS id
+    SELECT
+        %s::integer AS id,
+        %s::boolean AS content_counts_enabled
 ),
 source_votes AS (
     SELECT pl.person_id, pl.score, pl.published AS voted_at
@@ -719,11 +725,31 @@ ranked_users AS (
     FROM vote_totals vt
     JOIN person pe ON pe.id = vt.person_id
 ),
-paged_users AS (
+paged_users AS MATERIALIZED (
     SELECT *
     FROM ranked_users
     WHERE sort_position > %s
       AND sort_position <= %s
+),
+authored_post_counts AS MATERIALIZED (
+    SELECT authored_post.creator_id, COUNT(*)::bigint AS post_count
+    FROM post_aggregates authored_post
+    JOIN paged_users pu ON pu.id = authored_post.creator_id
+    WHERE (SELECT content_counts_enabled FROM target_instance)
+      AND authored_post.published
+        >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
+    GROUP BY authored_post.creator_id
+),
+authored_comment_counts AS MATERIALIZED (
+    SELECT authored_comment.creator_id, COUNT(*)::bigint AS comment_count
+    FROM comment authored_comment
+    JOIN comment_aggregates authored_comment_aggregate
+      ON authored_comment_aggregate.comment_id = authored_comment.id
+    JOIN paged_users pu ON pu.id = authored_comment.creator_id
+    WHERE (SELECT content_counts_enabled FROM target_instance)
+      AND authored_comment_aggregate.published
+        >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
+    GROUP BY authored_comment.creator_id
 )
 SELECT
     summary.known_users,
@@ -742,9 +768,13 @@ SELECT
     pu.down,
     pu.neutral,
     pu.latest_vote,
+    COALESCE(apc.post_count, 0)::bigint AS post_count,
+    COALESCE(acc.comment_count, 0)::bigint AS comment_count,
     pu.sort_position
 FROM summary
 LEFT JOIN paged_users pu ON true
+LEFT JOIN authored_post_counts apc ON apc.creator_id = pu.id
+LEFT JOIN authored_comment_counts acc ON acc.creator_id = pu.id
 ORDER BY pu.sort_position
 """
 

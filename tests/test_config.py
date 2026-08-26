@@ -25,6 +25,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.instance_vote_window_days, 30)
         self.assertEqual(config.timezone_name, "UTC")
         self.assertFalse(config.enable_domain_search)
+        self.assertTrue(config.enable_instance_content_counts)
+        self.assertTrue(config.enable_community_content_counts)
         self.assertEqual(config.auth_provider, "none")
         self.assertEqual(config.auth_search_require, "none")
         self.assertEqual(config.auth_instance_require, "none")
@@ -51,6 +53,8 @@ class ConfigTests(unittest.TestCase):
             LEMMY_BASE_URL="HTTPS://Lemmy.Example/",
             LEMMY_INTERNAL_URL="http://lemmy:8536/",
             ENABLE_DOMAIN_SEARCH="TRUE",
+            ENABLE_INSTANCE_CONTENT_COUNTS="false",
+            ENABLE_COMMUNITY_CONTENT_COUNTS="FALSE",
         )
 
         self.assertEqual(config.app_prefix, "/viewer")
@@ -58,6 +62,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.instance_query_timeout_seconds, 5)
         self.assertEqual(config.instance_vote_window_days, 30)
         self.assertTrue(config.enable_domain_search)
+        self.assertFalse(config.enable_instance_content_counts)
+        self.assertFalse(config.enable_community_content_counts)
         self.assertEqual(
             config.auth_allowed_users, frozenset({"dave", "blueether"})
         )
@@ -82,6 +88,14 @@ class ConfigTests(unittest.TestCase):
     def test_invalid_settings_raise_the_existing_startup_errors(self):
         invalid_settings = (
             ({"ENABLE_DOMAIN_SEARCH": "yes"}, "must be either true or false"),
+            (
+                {"ENABLE_INSTANCE_CONTENT_COUNTS": "yes"},
+                "must be either true or false",
+            ),
+            (
+                {"ENABLE_COMMUNITY_CONTENT_COUNTS": "yes"},
+                "must be either true or false",
+            ),
             ({"TIMEZONE": "Not/A_Timezone"}, "Invalid TIMEZONE"),
             ({"AUTH_PROVIDER": "other"}, "AUTH_PROVIDER must be either"),
             ({"AUTH_SEARCH_REQUIRE": "staff"}, "AUTH_SEARCH_REQUIRE must be"),
