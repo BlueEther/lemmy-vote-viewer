@@ -146,23 +146,17 @@
           <span class="filter-label">Sort</span>
           <a class="filter-button {{ 'active' if history_sort == 'date' else '' }}" href="{{ sort_urls.date }}">Newest</a>
           <a class="filter-button {{ 'active' if history_sort == 'oldest' else '' }}" href="{{ sort_urls.oldest }}">Oldest</a>
-        </div>
-        <div class="filter-group">
-          <span class="filter-label">Score</span>
-          <a class="filter-button {{ 'active' if history_sort in ('date', 'oldest') else '' }}" href="{{ sort_urls.date }}">All</a>
           <a class="filter-button {{ 'active' if history_sort == 'top' else '' }}" href="{{ sort_urls.top }}">Top</a>
           <a class="filter-button {{ 'active' if history_sort == 'bottom' else '' }}" href="{{ sort_urls.bottom }}">Bottom</a>
         </div>
       {% endif %}
 
       {% if history_view == 'cast' %}
-        <div class="filter-group">
+        <div class="filter-group cast-sort-filter">
           <span class="filter-label">Sort</span>
           <a class="filter-button {{ 'active' if history_sort == 'date' else '' }}" href="{{ sort_urls.date }}">Newest</a>
           <a class="filter-button {{ 'active' if history_sort == 'oldest' else '' }}" href="{{ sort_urls.oldest }}">Oldest</a>
-        </div>
-        <div class="filter-group">
-          <span class="filter-label">Vote</span>
+          <span class="filter-label filter-sublabel">Vote</span>
           <a class="filter-button {{ 'active' if score_filter is none else '' }}" href="{{ score_urls.all }}">All</a>
           <a class="filter-button {{ 'active' if score_filter == 1 else '' }}" href="{{ score_urls['1'] }}">↑ Upvotes</a>
           <a class="filter-button {{ 'active' if score_filter == -1 else '' }}" href="{{ score_urls['-1'] }}">↓ Downvotes</a>
@@ -173,7 +167,7 @@
       {% endif %}
 
       {% if history_view == 'communities' %}
-        <div class="filter-group">
+        <div class="filter-group community-sort-filter">
           <span class="filter-label">Sort</span>
           <a class="filter-button {{ 'active' if community_sort == 'total' else '' }}" href="{{ community_sort_urls.total }}">Combined</a>
           <a class="filter-button {{ 'active' if community_sort == 'cast' else '' }}" href="{{ community_sort_urls.cast }}">Cast</a>
