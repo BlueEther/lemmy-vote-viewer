@@ -241,6 +241,31 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(self.client.get("/item/post/1").status_code, 401)
         self.assertEqual(self.client.get("/item/comment/1").status_code, 401)
 
+    def test_disabled_requirements_hide_routes_before_database_access(self):
+        self.client.set_cookie("jwt", "test-token")
+        cases = (
+            ({"auth_search_require": "disabled"}, "/item/post/1"),
+            ({"auth_instance_require": "disabled"}, "/instance/lemmy.world"),
+        )
+        for changes, path in cases:
+            with self.subTest(path=path):
+                disabled = replace(viewer.CONFIG, **changes)
+                with (
+                    patch.dict(
+                        viewer.app.config,
+                        {"VOTE_VIEWER_CONFIG": disabled},
+                    ),
+                    patch.object(web, "connect_database") as connect_database,
+                    patch.object(
+                        AUTH_MANAGER.http_opener,
+                        "open",
+                    ) as auth_request,
+                ):
+                    response = self.client.get(path)
+                self.assertEqual(response.status_code, 404)
+                connect_database.assert_not_called()
+                auth_request.assert_not_called()
+
     def test_item_routes_select_queries_and_preserve_pagination(self):
         cases = (
             (

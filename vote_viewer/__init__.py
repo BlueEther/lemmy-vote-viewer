@@ -61,25 +61,34 @@ def security_headers(response):
 
 @app.context_processor
 def inject_app_config():
+    settings = app.config["VOTE_VIEWER_CONFIG"]
     auth_manager = app.extensions["vote_viewer_auth"]
-    try:
-        auth_user = auth_manager.authenticated_user()
-    except AuthenticationUnavailable:
+    feature_requirement = {
+        "search": settings.auth_search_require,
+        "items": settings.auth_search_require,
+        "overviews": settings.auth_instance_require,
+    }.get(request.blueprint)
+    if feature_requirement == "disabled":
         auth_user = None
+    else:
+        try:
+            auth_user = auth_manager.authenticated_user()
+        except AuthenticationUnavailable:
+            auth_user = None
     return {
-        "app_prefix": CONFIG.app_prefix,
-        "app_version": CONFIG.app_version,
-        "lemmy_base_url": CONFIG.lemmy_base_url,
-        "lemmy_instance": CONFIG.lemmy_instance,
-        "lemmy_login_url": CONFIG.lemmy_login_url,
+        "app_prefix": settings.app_prefix,
+        "app_version": settings.app_version,
+        "lemmy_base_url": settings.lemmy_base_url,
+        "lemmy_instance": settings.lemmy_instance,
+        "lemmy_login_url": settings.lemmy_login_url,
         "auth_user": auth_user,
         "viewer_access_enabled": auth_manager.access_requirement_met(
-            auth_user, CONFIG.auth_search_require
+            auth_user, settings.auth_search_require
         ),
         "domain_search_enabled": (
-            CONFIG.enable_domain_search
+            settings.enable_domain_search
             and auth_manager.access_requirement_met(
-                auth_user, CONFIG.auth_instance_require
+                auth_user, settings.auth_instance_require
             )
         ),
     }

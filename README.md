@@ -257,11 +257,19 @@ LEMMY_INTERNAL_URL=http://lemmy:8536
 
 Both requirement settings accept:
 
+- `disabled` — turn the corresponding feature off; its routes return HTTP 404.
 - `none` — public access.
 - `login` — any authenticated, active local Lemmy user.
 - `allowlist` — a Lemmy administrator or a username listed in
   `AUTH_ALLOWED_USERS`.
 - `admin` — Lemmy administrators only.
+
+`AUTH_SEARCH_REQUIRE` controls user searches and post/comment voter pages.
+`AUTH_INSTANCE_REQUIRE` controls instance and community overviews. Use
+`disabled` when the feature must not be available, or `none` when it should be
+available without authentication. Disabled routes return HTTP 404 before
+authentication or database access. Neither setting requires
+`AUTH_PROVIDER=lemmy` when its value is `disabled` or `none`.
 
 `AUTH_ALLOWED_USERS` is a comma-separated list of local usernames. Comparison
 is case-insensitive and surrounding whitespace is ignored. The list is only

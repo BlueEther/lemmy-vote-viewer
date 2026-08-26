@@ -4,12 +4,12 @@ The unit test suite is in [`tests/test_app.py`](../tests/test_app.py),
 [`tests/test_auth.py`](../tests/test_auth.py),
 [`tests/test_config.py`](../tests/test_config.py), and
 [`tests/test_database.py`](../tests/test_database.py). It uses Python's
-standard-library `unittest` framework and currently contains 49 tests.
+standard-library `unittest` framework and currently contains 52 tests.
 
-The suite covers authentication, authorization, community-handle parsing, URL
-construction, SQL-query selection, link enrichment, and conditional template
-behavior. Configuration tests separately cover environment defaults,
-normalization, bounds, and startup validation.
+The suite covers authentication, authorization, disabled-feature handling,
+community-handle parsing, URL construction, SQL-query selection, link
+enrichment, and conditional template behavior. Configuration tests separately
+cover environment defaults, normalization, bounds, and startup validation.
 
 ## Running the tests
 
@@ -81,6 +81,11 @@ Verifies prefix and URL normalization, case-insensitive booleans and allowed
 users, numeric minimum and maximum bounds, invalid-number fallbacks, and Lemmy
 public/internal URL derivation.
 
+### `test_disabled_features_do_not_require_an_authentication_provider`
+
+Verifies that `disabled` is accepted for both feature requirements without a
+Lemmy authentication provider and is normalized case-insensitively.
+
 ### `test_invalid_settings_raise_the_existing_startup_errors`
 
 Checks invalid booleans, timezones, authentication providers and requirements,
@@ -111,6 +116,12 @@ Requests the search page without a JWT cookie and verifies that it returns HTTP
 
 Requests both a post-voter route and a comment-voter route anonymously. It
 verifies that both return HTTP 401 before attempting database access.
+
+### `test_disabled_requirements_hide_routes_before_database_access`
+
+Sets each feature requirement to `disabled` and verifies that representative
+search and overview routes return HTTP 404 without opening a database
+connection.
 
 ### `test_item_routes_select_queries_and_preserve_pagination`
 
@@ -204,6 +215,11 @@ performed only once. It also checks that the request targets the configured
 internal Lemmy `/api/v3/site` endpoint, sends the JWT as a bearer token, and
 stores only hashed byte keys in the authentication cache rather than the raw
 token.
+
+### `test_disabled_requirement_returns_404_without_authentication`
+
+Verifies directly that `disabled` returns HTTP 404 without attempting Lemmy
+authentication and remains unavailable even to an administrator.
 
 ### `test_authentication_redirects_remain_disabled`
 

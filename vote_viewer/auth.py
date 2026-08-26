@@ -157,6 +157,8 @@ class AuthManager:
         return g.auth_user
 
     def access_requirement_met(self, user, requirement):
+        if requirement == "disabled":
+            return False
         if requirement == "none":
             return True
         if not user:
@@ -172,6 +174,8 @@ class AuthManager:
         )
 
     def enforce_access(self, requirement):
+        if requirement == "disabled":
+            abort(404)
         if requirement == "none":
             return None
         user = self.authenticated_user()
