@@ -98,6 +98,7 @@
             <a class="remote" title="Open profile on its original instance" href="{{ user.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
           {% endif %}
         </div>
+        <div class="user-content-counts muted">Total Posts: {{ user.post_count }} Comments: {{ user.comment_count }}</div>
         <div class="muted">@{{ user.handle }}</div>
       </div>
 

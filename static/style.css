@@ -210,6 +210,11 @@ button { cursor: pointer; }
   font-size: .9rem;
 }
 
+.user-content-counts {
+  margin-top: 3px;
+  font-size: .85rem;
+}
+
 .vote-row {
   padding: 18px 0;
   border-top: 1px solid #242832;

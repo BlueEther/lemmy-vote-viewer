@@ -4,7 +4,7 @@ The unit test suite is in [`tests/test_app.py`](../tests/test_app.py),
 [`tests/test_auth.py`](../tests/test_auth.py),
 [`tests/test_config.py`](../tests/test_config.py), and
 [`tests/test_database.py`](../tests/test_database.py). It uses Python's
-standard-library `unittest` framework and currently contains 52 tests.
+standard-library `unittest` framework and currently contains 53 tests.
 
 The suite covers authentication, authorization, disabled-feature handling,
 community-handle parsing, URL construction, SQL-query selection, link
@@ -141,6 +141,11 @@ Exercises a successful administrator-only community overview. It verifies
 controlled sort interpolation, the statement timeout override, exact community
 and page parameters, local and remote community links, and rendered pagination
 state.
+
+### `test_user_summary_shows_post_and_comment_counts`
+
+Renders the main user-search summary and verifies that the user's total known
+post and comment counts appear between the display name and handle.
 
 ### `test_logged_in_user_can_search_but_cannot_see_instance_search`
 

@@ -57,11 +57,28 @@ def resolve_user(cur, username):
 
         cur.execute(
             """
-            SELECT id, name, display_name, local, actor_id, instance_id, deleted
-            FROM person
-            WHERE lower(name) = lower(%s)
-              AND local = false
-              AND deleted = false
+            SELECT
+                p.id,
+                p.name,
+                p.display_name,
+                p.local,
+                p.actor_id,
+                p.instance_id,
+                p.deleted,
+                (
+                    SELECT COUNT(*)::bigint
+                    FROM post authored_post
+                    WHERE authored_post.creator_id = p.id
+                ) AS post_count,
+                (
+                    SELECT COUNT(*)::bigint
+                    FROM comment authored_comment
+                    WHERE authored_comment.creator_id = p.id
+                ) AS comment_count
+            FROM person p
+            WHERE lower(p.name) = lower(%s)
+              AND p.local = false
+              AND p.deleted = false
             """,
             (name,),
         )
@@ -75,11 +92,28 @@ def resolve_user(cur, username):
 
     cur.execute(
         """
-        SELECT id, name, display_name, local, actor_id, instance_id, deleted
-        FROM person
-        WHERE lower(name) = lower(%s)
-          AND local = true
-          AND deleted = false
+        SELECT
+            p.id,
+            p.name,
+            p.display_name,
+            p.local,
+            p.actor_id,
+            p.instance_id,
+            p.deleted,
+            (
+                SELECT COUNT(*)::bigint
+                FROM post authored_post
+                WHERE authored_post.creator_id = p.id
+            ) AS post_count,
+            (
+                SELECT COUNT(*)::bigint
+                FROM comment authored_comment
+                WHERE authored_comment.creator_id = p.id
+            ) AS comment_count
+        FROM person p
+        WHERE lower(p.name) = lower(%s)
+          AND p.local = true
+          AND p.deleted = false
         LIMIT 1
         """,
         (username,),

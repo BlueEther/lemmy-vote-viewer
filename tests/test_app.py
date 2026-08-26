@@ -515,6 +515,41 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(context["sort"], "recent")
         self.assertEqual(context["pagination"]["page"], 2)
 
+    def test_user_summary_shows_post_and_comment_counts(self):
+        user = {
+            "id": 42,
+            "display_name": "BlueEther",
+            "name": "blueether",
+            "local": False,
+            "actor_id": "https://no.lastname.nz/u/blueether",
+            "profile_path": "/u/blueether@no.lastname.nz",
+            "handle": "blueether@no.lastname.nz",
+            "post_count": 1234,
+            "comment_count": 5678,
+        }
+        cast, received = self.user_summaries()
+        database = ScriptedDatabase([cast, received, []])
+
+        with (
+            patch.object(search_routes, "db", return_value=database),
+            patch.object(search_routes, "resolve_user", return_value=user),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(),
+                "/?user=blueether%40no.lastname.nz",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        name_position = response.data.index(b">BlueEther</h2>")
+        counts_position = response.data.index(
+            b"Total Posts: 1234 Comments: 5678"
+        )
+        handle_position = response.data.index(
+            b"@blueether@no.lastname.nz"
+        )
+        self.assertLess(name_position, counts_position)
+        self.assertLess(counts_position, handle_position)
+
     def test_logged_in_user_can_search_but_cannot_see_instance_search(self):
         response = self.request_as(lemmy_user_payload())
         self.assertEqual(response.status_code, 200)
