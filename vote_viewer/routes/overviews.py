@@ -66,6 +66,7 @@ def instance_overview(domain):
                 overview_sql,
                 (
                     instance["id"],
+                    settings.enable_instance_content_counts,
                     requested_offset,
                     requested_offset + settings.page_size,
                 ),
@@ -114,6 +115,7 @@ def instance_overview(domain):
         sort_urls=sort_urls,
         pagination=pagination,
         vote_window_days=settings.instance_vote_window_days,
+        content_counts_enabled=settings.enable_instance_content_counts,
     )
 
 
@@ -159,6 +161,7 @@ def community_overview(community_handle):
                 overview_sql,
                 (
                     community["id"],
+                    settings.enable_community_content_counts,
                     requested_offset,
                     requested_offset + settings.page_size,
                 ),
@@ -216,4 +219,5 @@ def community_overview(community_handle):
         sort_urls=sort_urls,
         pagination=pagination,
         vote_window_days=settings.instance_vote_window_days,
+        content_counts_enabled=settings.enable_community_content_counts,
     )
