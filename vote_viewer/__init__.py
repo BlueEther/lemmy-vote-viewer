@@ -23,15 +23,17 @@ app = Flask(
 app.config["VOTE_VIEWER_CONFIG"] = CONFIG
 app.extensions["vote_viewer_auth"] = AuthManager(CONFIG)
 
+FEDERATION_HAIKU = (
+    "Beyond this node's reach",
+    "Federation brings it here",
+    "Then it can be seen",
+)
+
 ERROR_MESSAGES = {
     400: "The request could not be understood.",
     401: "Log in to the local Lemmy instance to use this viewer.",
     403: "Your Lemmy account does not have permission to view this page.",
-    404: (
-        "Beyond this node's reach",
-        "Federation brings it here",
-        "Then it can be seen",
-    ),
+    404: FEDERATION_HAIKU,
     500: "The viewer encountered an unexpected error.",
     503: "The database query took too long. Please try again later.",
 }
@@ -95,6 +97,7 @@ def inject_app_config():
                 auth_user, settings.auth_instance_require
             )
         ),
+        "federation_haiku": FEDERATION_HAIKU,
     }
 
 

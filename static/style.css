@@ -288,6 +288,19 @@ button { cursor: pointer; }
 .notice > :first-child { margin-top: 0; }
 .notice > :last-child { margin-bottom: 0; }
 
+.notice .federation-haiku {
+  margin-top: 16px;
+  color: #c3c8d2;
+  font-style: italic;
+}
+
+.federation-haiku p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.federation-haiku p + p { margin-top: 6px; }
+
 .user-suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -323,7 +336,7 @@ button { cursor: pointer; }
   line-height: 1.5;
 }
 
-.error-page p + p { margin-top: 6px; }
+.error-page .federation-haiku { margin-top: 0; }
 .error-page .filter-button { margin-top: 24px; }
 
 .item-context-line,

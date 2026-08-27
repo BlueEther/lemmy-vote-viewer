@@ -55,7 +55,12 @@
 
   {% if username and not user %}
     <div class="notice">
-      <p>No exact user found for <strong>{{ username }}</strong>. Remote users must already be known to this Lemmy instance.</p>
+      <p>No exact user found for <strong>{{ username }}</strong>.</p>
+      <div class="federation-haiku" aria-label="Federation notice">
+        {% for line in federation_haiku %}
+          <p>{{ line }}</p>
+        {% endfor %}
+      </div>
       {% if user_suggestions %}
         <p>Did you mean:</p>
         <ul class="user-suggestions">

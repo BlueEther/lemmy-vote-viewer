@@ -123,6 +123,11 @@ verifies that both return HTTP 401 before attempting database access.
 Requests an unknown route and verifies that the HTTP 404 page explains that
 remote content must already have federated to the local Lemmy instance.
 
+### `test_missing_user_shows_federation_haiku`
+
+Renders a missing remote-user result and verifies that the shared federation
+haiku appears beneath the existing lookup explanation.
+
 ### `test_disabled_requirements_hide_routes_before_database_access`
 
 Sets each feature requirement to `disabled` and verifies that representative

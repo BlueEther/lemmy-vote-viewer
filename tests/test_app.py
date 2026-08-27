@@ -250,6 +250,24 @@ class VoteViewerTests(unittest.TestCase):
         self.assertIn(b"Then it can be seen", response.data)
         self.assertEqual(response.data.count(b"<p>"), 3)
 
+    def test_missing_user_shows_federation_haiku(self):
+        with (
+            patch.object(search_routes, "db", return_value=ScriptedDatabase([])),
+            patch.object(search_routes, "resolve_user", return_value=None),
+            patch.object(search_routes, "find_user_suggestions", return_value=[]),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(),
+                "/?user=spyro_pd%40matrix.org",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"No exact user found", response.data)
+        self.assertIn(b"spyro_pd@matrix.org", response.data)
+        self.assertIn(b"Beyond this node&#39;s reach", response.data)
+        self.assertIn(b"Federation brings it here", response.data)
+        self.assertIn(b"Then it can be seen", response.data)
+
     def test_disabled_requirements_hide_routes_before_database_access(self):
         self.client.set_cookie("jwt", "test-token")
         cases = (
