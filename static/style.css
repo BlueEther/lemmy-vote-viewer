@@ -316,7 +316,15 @@ button { cursor: pointer; }
 }
 
 .error-page h1 { margin: 0 0 12px; }
-.error-page .filter-button { margin-top: 12px; }
+
+.error-page p {
+  max-width: 680px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.error-page p + p { margin-top: 6px; }
+.error-page .filter-button { margin-top: 24px; }
 
 .item-context-line,
 .item-title-line,

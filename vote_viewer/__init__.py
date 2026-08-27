@@ -28,9 +28,9 @@ ERROR_MESSAGES = {
     401: "Log in to the local Lemmy instance to use this viewer.",
     403: "Your Lemmy account does not have permission to view this page.",
     404: (
-        "The requested page or item was not found. The viewer can only show "
-        "content already known to this Lemmy instance; remote users, "
-        "communities, posts, and comments must have federated here first."
+        "Beyond this node's reach",
+        "Federation brings it here",
+        "Then it can be seen",
     ),
     500: "The viewer encountered an unexpected error.",
     503: "The database query took too long. Please try again later.",
@@ -132,11 +132,20 @@ def handle_authentication_unavailable(error):
 
 
 def render_error(status_code, message=None):
+    error_message = message or ERROR_MESSAGES.get(
+        status_code,
+        ERROR_MESSAGES[500],
+    )
+    message_paragraphs = (
+        error_message
+        if isinstance(error_message, tuple)
+        else (error_message,)
+    )
     return (
         render_template(
             "error.html",
             status_code=status_code,
-            message=message or ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[500]),
+            message_paragraphs=message_paragraphs,
         ),
         status_code,
     )

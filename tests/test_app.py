@@ -245,8 +245,10 @@ class VoteViewerTests(unittest.TestCase):
         response = self.client.get("/route-that-does-not-exist")
 
         self.assertEqual(response.status_code, 404)
-        self.assertIn(b"content already known to this Lemmy instance", response.data)
-        self.assertIn(b"must have federated here first", response.data)
+        self.assertIn(b"Beyond this node&#39;s reach", response.data)
+        self.assertIn(b"Federation brings it here", response.data)
+        self.assertIn(b"Then it can be seen", response.data)
+        self.assertEqual(response.data.count(b"<p>"), 3)
 
     def test_disabled_requirements_hide_routes_before_database_access(self):
         self.client.set_cookie("jwt", "test-token")

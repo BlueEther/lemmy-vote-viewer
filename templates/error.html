@@ -13,7 +13,9 @@
   <section class="error-page">
     <div class="error-code">ERROR {{ status_code }}</div>
     <h1>Something went wrong</h1>
-    <p>{{ message }}</p>
+    {% for paragraph in message_paragraphs %}
+      <p>{{ paragraph }}</p>
+    {% endfor %}
     {% if status_code == 401 and lemmy_login_url %}
       <a class="filter-button" href="{{ lemmy_login_url }}">Log in to Lemmy</a>
     {% endif %}
