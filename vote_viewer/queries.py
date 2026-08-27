@@ -843,6 +843,7 @@ COMMUNITY_OVERVIEW_SORTS = {
 POST_ITEM_SQL = """
 SELECT
     p.id AS post_id,
+    p.community_id,
     CASE WHEN p.deleted THEN '[deleted post]'
          WHEN p.removed THEN '[removed post]'
          ELSE p.name END AS post_title,
@@ -866,6 +867,7 @@ LIMIT 1
 COMMENT_ITEM_SQL = """
 SELECT
     cm.id AS comment_id,
+    p.community_id,
     CASE WHEN p.deleted OR p.removed THEN '[comment on unavailable post]'
          WHEN cm.deleted THEN '[deleted comment]'
          WHEN cm.removed THEN '[removed comment]'
@@ -926,6 +928,65 @@ WHERE cl.comment_id = %s
   AND voter.deleted = false
 ORDER BY {order_by}
 LIMIT %s OFFSET %s
+"""
+
+ITEM_VOTER_ACTIVITY_SQL = """
+WITH selected_voters AS (
+    SELECT UNNEST(%s::integer[]) AS voter_id
+),
+community_post_counts AS (
+    SELECT pa.creator_id AS voter_id, COUNT(*)::integer AS post_count
+    FROM post_aggregates pa
+    WHERE pa.creator_id = ANY(%s::integer[])
+      AND pa.community_id = %s
+      AND pa.published >= CURRENT_TIMESTAMP - %s::integer * INTERVAL '1 day'
+    GROUP BY pa.creator_id
+),
+community_comment_counts AS (
+    SELECT cm.creator_id AS voter_id, COUNT(*)::integer AS comment_count
+    FROM comment cm
+    JOIN comment_aggregates ca ON ca.comment_id = cm.id
+    JOIN post p ON p.id = cm.post_id
+    WHERE cm.creator_id = ANY(%s::integer[])
+      AND p.community_id = %s
+      AND ca.published >= CURRENT_TIMESTAMP - %s::integer * INTERVAL '1 day'
+    GROUP BY cm.creator_id
+),
+community_vote_scores AS (
+    SELECT pl.person_id AS voter_id, pl.score
+    FROM post_like pl
+    JOIN post p ON p.id = pl.post_id
+    WHERE pl.person_id = ANY(%s::integer[])
+      AND p.community_id = %s
+      AND pl.published >= CURRENT_TIMESTAMP - %s::integer * INTERVAL '1 day'
+
+    UNION ALL
+
+    SELECT cl.person_id AS voter_id, cl.score
+    FROM comment_like cl
+    JOIN post p ON p.id = cl.post_id
+    WHERE cl.person_id = ANY(%s::integer[])
+      AND p.community_id = %s
+      AND cl.published >= CURRENT_TIMESTAMP - %s::integer * INTERVAL '1 day'
+),
+community_vote_counts AS (
+    SELECT
+        voter_id,
+        COUNT(*) FILTER (WHERE score > 0)::integer AS up,
+        COUNT(*) FILTER (WHERE score < 0)::integer AS down
+    FROM community_vote_scores
+    GROUP BY voter_id
+)
+SELECT
+    sv.voter_id,
+    COALESCE(pc.post_count, 0) AS community_post_count,
+    COALESCE(cc.comment_count, 0) AS community_comment_count,
+    COALESCE(vc.up, 0) AS community_up,
+    COALESCE(vc.down, 0) AS community_down
+FROM selected_voters sv
+LEFT JOIN community_post_counts pc ON pc.voter_id = sv.voter_id
+LEFT JOIN community_comment_counts cc ON cc.voter_id = sv.voter_id
+LEFT JOIN community_vote_counts vc ON vc.voter_id = sv.voter_id
 """
 
 ITEM_VOTER_SORTS = ("vote", "newest", "oldest", "username")

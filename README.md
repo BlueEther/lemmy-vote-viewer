@@ -226,7 +226,8 @@ cp .env.example .env
 - `ENABLE_INSTANCE_CONTENT_COUNTS` and `ENABLE_COMMUNITY_CONTENT_COUNTS`
   accept `true` or `false` and default to `true`. Set the relevant flag to
   `false` to hide post/comment totals and skip their additional database work
-  on instance or community overview pages.
+  on instance or community pages. Community content counts also control the
+  community-scoped post, comment, and vote totals on item-voter pages.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance-overview query.
   It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
   below the Gunicorn worker timeout.

@@ -138,7 +138,10 @@ connection.
 
 Exercises successful post and comment voter pages. It verifies the selected
 item, summary, and voter SQL constants, exact item ID, limit and offset
-parameters, rendered item type, and second-page state.
+parameters, rendered item type, second-page state, and the page-scoped SQL
+aggregates used for each voter's configured-window activity in the item's
+community. It also verifies that disabling community content counts skips the
+item activity query and hides the totals.
 
 ### `test_instance_overview_selects_sort_timeout_and_page`
 

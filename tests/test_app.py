@@ -333,9 +333,26 @@ class VoteViewerTests(unittest.TestCase):
                 item_id = 123 if kind == "post" else 456
                 database = ScriptedDatabase(
                     [
-                        {"item_id": item_id},
+                        {"item_id": item_id, "community_id": 99},
                         {"total": 150, "up": 100, "down": 50, "neutral": 0},
-                        [{"voter_name": "Alice"}],
+                        [
+                            {
+                                "voter_id": 7,
+                                "voter_name": "Alice",
+                            }
+                        ],
+                        None,
+                        None,
+                        None,
+                        [
+                            {
+                                "voter_id": 7,
+                                "community_post_count": 12,
+                                "community_comment_count": 34,
+                                "community_up": 56,
+                                "community_down": 7,
+                            }
+                        ],
                     ]
                 )
                 context = {}
@@ -379,12 +396,58 @@ class VoteViewerTests(unittest.TestCase):
                                 viewer.CONFIG.page_size,
                             ),
                         ),
+                        ("SELECT set_config('jit', 'off', true)", None),
+                        (
+                            "SELECT set_config("
+                            "'max_parallel_workers_per_gather', '0', true)",
+                            None,
+                        ),
+                        (
+                            "SELECT set_config('statement_timeout', %s, true)",
+                            (f"{viewer.CONFIG.instance_query_timeout_seconds}s",),
+                        ),
+                        (
+                            queries.ITEM_VOTER_ACTIVITY_SQL,
+                            (
+                                [7],
+                                [7],
+                                99,
+                                viewer.CONFIG.instance_vote_window_days,
+                                [7],
+                                99,
+                                viewer.CONFIG.instance_vote_window_days,
+                                [7],
+                                99,
+                                viewer.CONFIG.instance_vote_window_days,
+                                [7],
+                                99,
+                                viewer.CONFIG.instance_vote_window_days,
+                            ),
+                        ),
                     ],
                 )
                 self.assertEqual(context["template_name"], "item.html")
                 self.assertEqual(context["kind"], kind)
                 self.assertEqual(context["item_id"], item_id)
                 self.assertEqual(context["voter_sort"], voter_sort)
+                self.assertTrue(context["community_content_counts_enabled"])
+                self.assertEqual(
+                    context["vote_window_days"],
+                    viewer.CONFIG.instance_vote_window_days,
+                )
+                self.assertEqual(context["rows"][0]["community_post_count"], 12)
+                self.assertIn(
+                    "community_post_counts AS",
+                    queries.ITEM_VOTER_ACTIVITY_SQL,
+                )
+                self.assertIn(
+                    "community_comment_counts AS",
+                    queries.ITEM_VOTER_ACTIVITY_SQL,
+                )
+                self.assertIn(
+                    "community_vote_counts AS",
+                    queries.ITEM_VOTER_ACTIVITY_SQL,
+                )
                 self.assertEqual(context["pagination"]["page"], 2)
                 self.assertEqual(
                     context["pagination"]["prev_url"],
@@ -394,6 +457,65 @@ class VoteViewerTests(unittest.TestCase):
                     context["sort_urls"]["username"],
                     links.build_item_url(kind, item_id, sort="username"),
                 )
+
+    def test_item_activity_counts_can_be_disabled(self):
+        disabled = replace(
+            viewer.CONFIG,
+            enable_community_content_counts=False,
+        )
+        database = ScriptedDatabase(
+            [
+                {"post_id": 123, "community_id": 99},
+                {"total": 1, "up": 1, "down": 0, "neutral": 0},
+                [{"voter_id": 7, "voter_name": "Alice"}],
+            ]
+        )
+        context = {}
+
+        def capture_template(template_name, **values):
+            context.update(values)
+            return "rendered"
+
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": disabled},
+            ),
+            patch.object(item_routes, "db", return_value=database),
+            patch.object(
+                item_routes,
+                "enrich_item",
+                side_effect=lambda row, app_prefix: dict(row),
+            ),
+            patch.object(
+                item_routes,
+                "enrich_voter",
+                side_effect=lambda row, app_prefix: dict(row),
+            ),
+            patch.object(
+                item_routes,
+                "render_template",
+                side_effect=capture_template,
+            ),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(),
+                "/item/post/123",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(context["community_content_counts_enabled"])
+        self.assertEqual(
+            database.queries,
+            [
+                (queries.POST_ITEM_SQL, (123,)),
+                (queries.POST_VOTER_SUMMARY_SQL, (123,)),
+                (
+                    queries.POST_VOTERS_SQL,
+                    (123, disabled.page_size, 0),
+                ),
+            ],
+        )
 
     def test_instance_overview_selects_sort_timeout_and_page(self):
         overview = {

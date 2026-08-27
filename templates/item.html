@@ -103,7 +103,10 @@
             <a class="remote" title="Open profile on its original instance" href="{{ row.voter_remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
           {% endif %}
         </span>
-        <span class="voter-handle muted">{{ row.voter_display }}</span>
+        <span class="voter-details">
+          <span class="voter-handle muted">{{ row.voter_display }}</span>
+          {% if community_content_counts_enabled %}<span class="voter-community-totals muted">Community Posts: {{ row.community_post_count }} Comments: {{ row.community_comment_count }} Votes: {{ row.community_up }}/{{ row.community_down }} ({{ vote_window_days }} days)</span>{% endif %}
+        </span>
         <span class="voter-time muted">{{ row.voted_at|display_datetime }}</span>
       </div>
     {% endfor %}
