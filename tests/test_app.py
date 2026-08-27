@@ -818,7 +818,7 @@ class VoteViewerTests(unittest.TestCase):
     def test_admin_community_search_normalizes_and_redirects(self):
         response = self.request_as(
             lemmy_user_payload(admin=True),
-            "/?community_overview=!technology@LEMMY.WORLD.",
+            "/?community_overview=technology@LEMMY.WORLD.",
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
@@ -918,7 +918,7 @@ class VoteViewerTests(unittest.TestCase):
         }
         response, database, context = self.request_index(
             "/?user=Dave%40lemmy.nz&sort=oldest"
-            "&community=!newzealand%40lemmy.nz",
+            "&community=newzealand%40lemmy.nz",
             [cast, received, []],
             community=community,
         )
@@ -1148,18 +1148,23 @@ class VoteViewerTests(unittest.TestCase):
 
     def test_community_handle_parser_accepts_local_and_remote_handles(self):
         self.assertEqual(
-            links.parse_community_handle("!newzealand"),
+            links.parse_community_handle("newzealand"),
             ("newzealand", None),
         )
         self.assertEqual(
-            links.parse_community_handle(" !technology@LEMMY.WORLD. "),
+            links.parse_community_handle(" technology@LEMMY.WORLD. "),
             ("technology", "lemmy.world"),
+        )
+        self.assertEqual(
+            links.parse_community_handle("!newzealand"),
+            ("newzealand", None),
         )
 
     def test_community_handle_parser_rejects_invalid_values(self):
         for value in (
-            "community",
+            "",
             "!",
+            "@instance.example",
             "!community@",
             "!community/path",
             "!community name",

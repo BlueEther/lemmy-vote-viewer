@@ -67,8 +67,8 @@ Raw request values are not interpolated into SQL text.
 
 **Caller:** `resolve_community()`
 
-**Purpose:** Resolve `!community` or `!community@instance` to a single public,
-active community row.
+**Purpose:** Resolve `community` or `community@instance` (with an optional
+leading `!`) to a single public, active community row.
 
 **Parameters:**
 
