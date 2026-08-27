@@ -291,7 +291,8 @@ post for comment aggregates.
 user.
 
 **Parameters:** User ID for post cast votes, comment cast votes, received posts,
-and received comments, followed by page size and offset.
+received comments, authored posts, and authored comments, followed by page size
+and offset.
 
 **Behavior:**
 
@@ -300,9 +301,11 @@ and received comments, followed by page size and offset.
    community and direction.
 3. Combines cast and received groups with a full outer join so activity present
    on only one side is retained.
-4. Joins community display information.
-5. Excludes non-public, deleted, and removed communities from output.
-6. Uses `COUNT(*) OVER ()` to return the total community count for pagination.
+4. Groups the user's lifetime authored post and comment totals by community and
+   includes communities with authored content but no recorded vote activity.
+5. Joins community display information.
+6. Excludes non-public, deleted, and removed communities from output.
+7. Uses `COUNT(*) OVER ()` to return the total community count for pagination.
 
 The route inserts an order expression from `COMMUNITY_SUMMARY_SORTS`. Available
 orders are combined total, cast total, received total, combined downvotes, and

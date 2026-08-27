@@ -348,6 +348,7 @@
                       {% endif %}
                     </span>
                   </div>
+                  <div class="community-content-counts muted">Total Posts: {{ row.post_count }} Comments: {{ row.comment_count }}</div>
                   <a class="community-handle muted" href="{{ row.overview_path if domain_search_enabled else row.cast_path }}">{{ row.community_display }}</a>
                 </td>
                 <td><a class="history-link" href="{{ row.cast_path }}">Cast</a></td>

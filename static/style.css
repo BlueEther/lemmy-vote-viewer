@@ -537,6 +537,11 @@ button { cursor: pointer; }
   text-decoration: none;
 }
 
+.community-content-counts {
+  margin-top: 3px;
+  font-size: .8rem;
+}
+
 .community-handle:hover,
 .history-link:hover {
   text-decoration: underline;

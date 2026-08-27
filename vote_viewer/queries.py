@@ -470,9 +470,41 @@ received_by_community AS (
     FROM received_by_type
     GROUP BY community_id
 ),
+authored_by_type AS (
+    SELECT
+        authored_post.community_id,
+        COUNT(*)::bigint AS post_count,
+        0::bigint AS comment_count
+    FROM post authored_post
+    WHERE authored_post.creator_id = %s
+    GROUP BY authored_post.community_id
+
+    UNION ALL
+
+    SELECT
+        parent_post.community_id,
+        0::bigint AS post_count,
+        COUNT(*)::bigint AS comment_count
+    FROM comment authored_comment
+    JOIN post parent_post ON parent_post.id = authored_comment.post_id
+    WHERE authored_comment.creator_id = %s
+    GROUP BY parent_post.community_id
+),
+authored_by_community AS (
+    SELECT
+        community_id,
+        SUM(post_count)::bigint AS post_count,
+        SUM(comment_count)::bigint AS comment_count
+    FROM authored_by_type
+    GROUP BY community_id
+),
 community_summary AS MATERIALIZED (
     SELECT
-        COALESCE(cv.community_id, rv.community_id) AS community_id,
+        COALESCE(
+            cv.community_id,
+            rv.community_id,
+            av.community_id
+        ) AS community_id,
         COALESCE(cv.total, 0)::bigint AS cast_total,
         COALESCE(cv.post_up, 0)::bigint AS cast_post_up,
         COALESCE(cv.post_down, 0)::bigint AS cast_post_down,
@@ -487,10 +519,14 @@ community_summary AS MATERIALIZED (
         COALESCE(rv.post_down, 0)::bigint
           + COALESCE(rv.comment_down, 0)::bigint AS received_down,
         COALESCE(cv.post_down, 0)::bigint
-          + COALESCE(cv.comment_down, 0)::bigint AS cast_down
+          + COALESCE(cv.comment_down, 0)::bigint AS cast_down,
+        COALESCE(av.post_count, 0)::bigint AS post_count,
+        COALESCE(av.comment_count, 0)::bigint AS comment_count
     FROM cast_by_community cv
     FULL OUTER JOIN received_by_community rv
       ON rv.community_id = cv.community_id
+    FULL OUTER JOIN authored_by_community av
+      ON av.community_id = COALESCE(cv.community_id, rv.community_id)
 )
 SELECT
     cs.*,

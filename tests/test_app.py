@@ -865,7 +865,30 @@ class VoteViewerTests(unittest.TestCase):
 
     def test_index_community_view_selects_sort_and_preserves_pagination(self):
         cast, received = self.user_summaries()
-        community_row = {"community_count": 250, "community_id": 77}
+        community_row = {
+            "community_count": 250,
+            "community_id": 77,
+            "community_title": "New Zealand",
+            "community_display": "!newzealand@lemmy.nz",
+            "community_local_path": "/c/newzealand@lemmy.nz",
+            "community_remote_url": "https://lemmy.nz/c/newzealand",
+            "overview_path": "/community/newzealand@lemmy.nz",
+            "cast_path": "/?user=Dave%40lemmy.nz&community=%21newzealand%40lemmy.nz",
+            "received_path": "/?user=Dave%40lemmy.nz&view=received&community=%21newzealand%40lemmy.nz",
+            "cast_total": 12,
+            "cast_post_up": 4,
+            "cast_post_down": 1,
+            "cast_comment_up": 6,
+            "cast_comment_down": 1,
+            "cast_neutral": 0,
+            "received_total": 30,
+            "received_post_up": 14,
+            "received_post_down": 2,
+            "received_comment_up": 12,
+            "received_comment_down": 2,
+            "post_count": 7,
+            "comment_count": 19,
+        }
         response, database, context = self.request_index(
             "/?user=Dave%40lemmy.nz&view=communities&sort=down&page=2",
             [cast, received, [community_row]],
@@ -880,7 +903,16 @@ class VoteViewerTests(unittest.TestCase):
         )
         self.assertEqual(
             database.queries[2][1],
-            (42, 42, 42, 42, viewer.CONFIG.page_size, viewer.CONFIG.page_size),
+            (
+                42,
+                42,
+                42,
+                42,
+                42,
+                42,
+                viewer.CONFIG.page_size,
+                viewer.CONFIG.page_size,
+            ),
         )
         self.assertEqual(context["content_type"], "all")
         self.assertEqual(
@@ -892,6 +924,22 @@ class VoteViewerTests(unittest.TestCase):
                 "page": ["3"],
             },
         )
+        overview_sql = database.queries[2][0]
+        self.assertIn("authored_post.creator_id", overview_sql)
+        self.assertIn("authored_comment.creator_id", overview_sql)
+
+        with viewer.app.test_request_context("/"):
+            with patch.object(
+                AUTH_MANAGER,
+                "authenticated_user",
+                return_value={"username": "Admin", "admin": True},
+            ):
+                html = viewer.render_template("index.html", **context)
+        title_position = html.index("New Zealand")
+        counts_position = html.index("Total Posts: 7 Comments: 19")
+        handle_position = html.index("!newzealand@lemmy.nz")
+        self.assertLess(title_position, counts_position)
+        self.assertLess(counts_position, handle_position)
 
     def test_index_empty_deep_community_page_redirects_to_first_page(self):
         cast, received = self.user_summaries()
