@@ -45,7 +45,7 @@
           <h2>Community vote overview</h2>
           <p>Review voters and their recent vote totals.</p>
           <form method="get" action="{{ app_prefix }}/" class="search">
-            <input name="community_overview" value="{{ community_overview_query }}" aria-label="Community" placeholder="!community or !community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false" {% if community_overview_query %}autofocus{% endif %}>
+            <input name="community_overview" value="{{ community_overview_query }}" aria-label="Community" placeholder="community or community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false" {% if community_overview_query %}autofocus{% endif %}>
             <button type="submit">Search</button>
           </form>
         </section>
@@ -88,7 +88,7 @@
   {% endif %}
 
   {% if domain_search_enabled and community_overview_error == 'invalid' %}
-    <p class="notice">Enter a community as <strong>!community</strong> for a local community or <strong>!community@instance</strong> for a known remote community.</p>
+    <p class="notice">Enter a community as <strong>community</strong> for a local community or <strong>community@instance</strong> for a known remote community.</p>
   {% endif %}
 
   {% if user %}
@@ -193,7 +193,7 @@
           {% endif %}
           {% if history_view == 'cast' and history_sort != 'date' %}<input type="hidden" name="sort" value="{{ history_sort }}">{% endif %}
           <label class="filter-label" for="community-filter">Community</label>
-          <input id="community-filter" name="community" value="{{ community_query }}" aria-label="Community filter" placeholder="!community or !community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <input id="community-filter" name="community" value="{{ community_query }}" aria-label="Community filter" placeholder="community or community@instance" maxlength="512" autocomplete="off" autocapitalize="none" spellcheck="false">
           <button type="submit">Apply</button>
           {% if community_query %}<a class="filter-button" href="{{ community_clear_url }}">Clear</a>{% endif %}
         </form>
@@ -201,7 +201,7 @@
     </nav>
 
     {% if community_error == 'invalid' %}
-      <p class="notice">Enter a community as <strong>!community</strong> for a local community or <strong>!community@instance</strong> for a known remote community.</p>
+      <p class="notice">Enter a community as <strong>community</strong> for a local community or <strong>community@instance</strong> for a known remote community.</p>
     {% elif community_error == 'not_found' %}
       <p class="notice">No known public community found for <strong>{{ community_query }}</strong>. Remote communities must already be known to this Lemmy instance.</p>
     {% elif community %}

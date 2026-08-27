@@ -331,14 +331,15 @@ specific timeout message.
 
 ### `test_community_handle_parser_accepts_local_and_remote_handles`
 
-Verifies that the parser accepts both `!newzealand` and
-`!technology@lemmy.world`, trims surrounding whitespace, lowercases the
-instance, and removes a trailing dot from the instance name.
+Verifies that the parser accepts both `newzealand` and
+`technology@lemmy.world` without a leading `!`, retains compatibility with an
+optional `!`, trims surrounding whitespace, lowercases the instance, and
+removes a trailing dot from the instance name.
 
 ### `test_community_handle_parser_rejects_invalid_values`
 
-Verifies that the parser rejects a missing `!`, an empty name, a missing
-instance after `@`, a path component, and whitespace inside a community name.
+Verifies that the parser rejects an empty name, a missing instance after `@`,
+a path component, and whitespace inside a community name.
 Each invalid value is reported as a separate `subTest` case.
 
 ### `test_index_url_preserves_community_filter`
