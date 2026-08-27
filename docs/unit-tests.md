@@ -138,7 +138,10 @@ connection.
 
 Exercises successful post and comment voter pages. It verifies the selected
 item, summary, and voter SQL constants, exact item ID, limit and offset
-parameters, rendered item type, and second-page state.
+parameters, rendered item type, second-page state, and the page-scoped SQL
+aggregates used for each voter's configured-window activity in the item's
+community. It also verifies that disabling community content counts skips the
+item activity query and hides the totals.
 
 ### `test_instance_overview_selects_sort_timeout_and_page`
 
@@ -291,9 +294,10 @@ of received mode in pagination.
 ### `test_index_community_view_selects_sort_and_preserves_pagination`
 
 Requests the second page of downvote-sorted community summaries. It verifies
-the controlled SQL sort expression, exact pagination parameters, forced `all`
-content type, and preservation of the community-summary view and sort order in
-the next-page URL.
+the controlled SQL sort expression, exact user and pagination parameters,
+forced `all` content type, per-community lifetime authored post/comment totals,
+and preservation of the community-summary view and sort order in the next-page
+URL.
 
 ### `test_index_empty_deep_community_page_redirects_to_first_page`
 

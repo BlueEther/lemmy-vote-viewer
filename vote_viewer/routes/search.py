@@ -284,6 +284,8 @@ def index():
                                 user["id"],
                                 user["id"],
                                 user["id"],
+                                user["id"],
+                                user["id"],
                                 settings.page_size,
                                 requested_offset,
                             ),

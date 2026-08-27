@@ -7,6 +7,7 @@ from ..queries import (
     COMMENT_ITEM_SQL,
     COMMENT_VOTERS_SQL_BY_SORT,
     COMMENT_VOTER_SUMMARY_SQL,
+    ITEM_VOTER_ACTIVITY_SQL,
     ITEM_VOTER_SORTS,
     POST_ITEM_SQL,
     POST_VOTERS_SQL_BY_SORT,
@@ -27,6 +28,7 @@ blueprint = Blueprint("items", __name__)
 
 
 def item_votes(kind, item_id):
+    settings = config()
     requested_page = parse_page()
     voter_sort = request.args.get("sort", "vote")
     if voter_sort not in ITEM_VOTER_SORTS:
@@ -53,7 +55,7 @@ def item_votes(kind, item_id):
             item = cur.fetchone()
             if not item:
                 abort(404)
-            item = enrich_item(item, config().app_prefix)
+            item = enrich_item(item, settings.app_prefix)
 
             cur.execute(summary_sql, (item_id,))
             summary = cur.fetchone()
@@ -61,11 +63,48 @@ def item_votes(kind, item_id):
 
             cur.execute(
                 voters_sql,
-                (item_id, config().page_size, pagination["offset"]),
+                (item_id, settings.page_size, pagination["offset"]),
             )
+            rows = cur.fetchall()
+
+            if rows and settings.enable_community_content_counts:
+                voter_ids = [row["voter_id"] for row in rows]
+                cur.execute("SELECT set_config('jit', 'off', true)")
+                cur.execute(
+                    "SELECT set_config("
+                    "'max_parallel_workers_per_gather', '0', true)"
+                )
+                cur.execute(
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    (f"{settings.instance_query_timeout_seconds}s",),
+                )
+                activity_params = (
+                    voter_ids,
+                    voter_ids,
+                    item["community_id"],
+                    settings.instance_vote_window_days,
+                    voter_ids,
+                    item["community_id"],
+                    settings.instance_vote_window_days,
+                    voter_ids,
+                    item["community_id"],
+                    settings.instance_vote_window_days,
+                    voter_ids,
+                    item["community_id"],
+                    settings.instance_vote_window_days,
+                )
+                cur.execute(
+                    ITEM_VOTER_ACTIVITY_SQL,
+                    activity_params,
+                )
+                activity_by_voter = {
+                    row["voter_id"]: row for row in cur.fetchall()
+                }
+                for row in rows:
+                    row.update(activity_by_voter.get(row["voter_id"], {}))
+
             rows = [
-                enrich_voter(row, config().app_prefix)
-                for row in cur.fetchall()
+                enrich_voter(row, settings.app_prefix) for row in rows
             ]
 
     if pagination["has_prev"]:
@@ -91,6 +130,10 @@ def item_votes(kind, item_id):
         summary=summary,
         pagination=pagination,
         voter_sort=voter_sort,
+        community_content_counts_enabled=(
+            settings.enable_community_content_counts
+        ),
+        vote_window_days=settings.instance_vote_window_days,
         sort_urls=sort_urls,
     )
 

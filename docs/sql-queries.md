@@ -57,6 +57,7 @@ Raw request values are not interpolated into SQL text.
 | `COMMENT_ITEM_SQL` | Load comment and parent-post metadata | `comment`, `post`, `community` |
 | `POST_VOTERS_SQL` | Paginate voters on one post | `post_like`, `person` |
 | `COMMENT_VOTERS_SQL` | Paginate voters on one comment | `comment_like`, `person` |
+| `ITEM_VOTER_ACTIVITY_SQL` | Count recent community activity for one voter page | Vote, aggregate, post, and comment tables |
 | `POST_VOTER_SUMMARY_SQL` | Count post voters by direction | `post_like`, `person` |
 | `COMMENT_VOTER_SUMMARY_SQL` | Count comment voters by direction | `comment_like`, `person` |
 
@@ -291,7 +292,8 @@ post for comment aggregates.
 user.
 
 **Parameters:** User ID for post cast votes, comment cast votes, received posts,
-and received comments, followed by page size and offset.
+received comments, authored posts, and authored comments, followed by page size
+and offset.
 
 **Behavior:**
 
@@ -300,9 +302,11 @@ and received comments, followed by page size and offset.
    community and direction.
 3. Combines cast and received groups with a full outer join so activity present
    on only one side is retained.
-4. Joins community display information.
-5. Excludes non-public, deleted, and removed communities from output.
-6. Uses `COUNT(*) OVER ()` to return the total community count for pagination.
+4. Groups the user's lifetime authored post and comment totals by community and
+   includes communities with authored content but no recorded vote activity.
+5. Joins community display information.
+6. Excludes non-public, deleted, and removed communities from output.
+7. Uses `COUNT(*) OVER ()` to return the total community count for pagination.
 
 The route inserts an order expression from `COMMUNITY_SUMMARY_SORTS`. Available
 orders are combined total, cast total, received total, combined downvotes, and
@@ -471,6 +475,27 @@ stored locally.
 **Parameters:** Comment ID, page size, and offset
 
 It returns and orders the same voter fields as the post variant.
+
+### `ITEM_VOTER_ACTIVITY_SQL`
+
+**Caller:** Post and comment item-voter pages after voter pagination
+
+**Purpose:** Add configured-window posts, comments, upvotes, and downvotes for
+each displayed voter, scoped to the item's community.
+
+The route skips this query entirely when `ENABLE_COMMUNITY_CONTENT_COUNTS` is
+false.
+
+**Parameters:** Concrete page voter IDs, community ID, and activity-window
+days.
+
+Passing concrete voter IDs separately from voter pagination lets PostgreSQL
+combine its existing indexes and keeps the expensive aggregates limited to
+the displayed page. The route disables PostgreSQL JIT for the activity query
+because the bounded aggregate is cheaper to execute directly than to compile,
+and disables parallel workers to avoid shared-memory overhead for the small
+page-scoped result. The activity query uses the configured overview timeout
+instead of the connection's shorter default timeout.
 
 ### `POST_VOTER_SUMMARY_SQL`
 

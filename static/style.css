@@ -413,11 +413,25 @@ button { cursor: pointer; }
 
 .profile-link:hover { opacity: 1; }
 
+.voter-details {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
 .voter-handle {
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.voter-community-totals {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.3;
 }
 
 .voter-time {
@@ -535,6 +549,11 @@ button { cursor: pointer; }
   margin-top: 3px;
   overflow-wrap: anywhere;
   text-decoration: none;
+}
+
+.community-content-counts {
+  margin-top: 3px;
+  font-size: .8rem;
 }
 
 .community-handle:hover,
@@ -656,7 +675,7 @@ blockquote {
     grid-template-columns: 28px minmax(0, 1fr);
     grid-template-areas:
       "vote identity"
-      ".    handle"
+      ".    details"
       ".    time";
     gap: 6px 10px;
     align-items: start;
@@ -665,8 +684,9 @@ blockquote {
   .vote-mark { grid-area: vote; }
   .voter-identity { grid-area: identity; }
 
+  .voter-details { grid-area: details; }
+
   .voter-handle {
-    grid-area: handle;
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
