@@ -526,6 +526,10 @@ class VoteViewerTests(unittest.TestCase):
         )
 
     def test_instance_overview_selects_sort_timeout_and_page(self):
+        enabled = replace(
+            viewer.CONFIG,
+            enable_instance_vote_graphs=True,
+        )
         overview = {
             "known_users": 500,
             "voting_users": 150,
@@ -561,6 +565,10 @@ class VoteViewerTests(unittest.TestCase):
             return "rendered"
 
         with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
             patch.object(overview_routes, "db", return_value=database),
             patch.object(
                 overview_routes,
@@ -601,6 +609,10 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(context["sort"], "down")
         self.assertEqual(context["pagination"]["page"], 2)
         self.assertTrue(context["content_counts_enabled"])
+        self.assertEqual(
+            context["vote_graph_url"],
+            "/graph/instance?instance_id=9",
+        )
         overview_sql = database.queries[2][0]
         self.assertIn("authored_post.published", overview_sql)
         self.assertIn("authored_comment_aggregate.published", overview_sql)
@@ -619,10 +631,67 @@ class VoteViewerTests(unittest.TestCase):
         handle_position = html.index("@BlueEther@lemmy.nz")
         self.assertLess(name_position, counts_position)
         self.assertLess(counts_position, handle_position)
+        self.assertIn('data-vote-graph-url="/graph/instance?', html)
         context["content_counts_enabled"] = False
         with viewer.app.test_request_context("/"):
             html = viewer.render_template("instance.html", **context)
         self.assertNotIn("Day Total — Posts:", html)
+
+    def test_instance_vote_graph_uses_timeout_window_and_cache(self):
+        graph_rows = [
+            {
+                "day": date(2026, 8, 27),
+                "total": 3,
+                "up": 2,
+                "down": 1,
+                "neutral": 0,
+            },
+            {
+                "day": date(2026, 8, 28),
+                "total": 5,
+                "up": 4,
+                "down": 1,
+                "neutral": 0,
+            },
+        ]
+        enabled = replace(
+            viewer.CONFIG,
+            enable_instance_vote_graphs=True,
+        )
+        database = ScriptedDatabase([None, graph_rows])
+
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(overview_routes, "db", return_value=database),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/graph/instance?instance_id=9",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["X-Vote-Graph-Cache"], "miss")
+        self.assertIn(b"Votes by instance users by day", response.data)
+        self.assertIn(
+            b"2026-08-28: 5 total, 4 up, 1 down",
+            response.data,
+        )
+        self.assertEqual(
+            database.queries,
+            [
+                (
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    ("12s",),
+                ),
+                (
+                    queries.INSTANCE_VOTE_GRAPH_SQL,
+                    (9, "UTC", 30),
+                ),
+            ],
+        )
 
     def test_community_overview_selects_sort_timeout_and_page(self):
         community = {

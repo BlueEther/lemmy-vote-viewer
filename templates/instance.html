@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ domain }} · Lemmy Vote Viewer</title>
   <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+  <script src="{{ app_prefix }}/static/graph.js" defer></script>
 </head>
 <body>
 <main class="wrap">
@@ -30,6 +31,18 @@
       {% if summary.neutral %}<span class="neutral"><b>{{ summary.neutral }}</b> •</span>{% endif %}
     </div>
   </section>
+
+  {% if vote_graph_url %}
+    <section class="vote-graph vote-graph-loading" data-vote-graph-url="{{ vote_graph_url }}" aria-busy="true" aria-live="polite">
+      <div class="vote-graph-heading">
+        <div>
+          <h3>Votes by instance users by day</h3>
+          <p class="muted" data-graph-status>Loading graph…</p>
+        </div>
+      </div>
+      <noscript><p class="notice">JavaScript is required to load this graph.</p></noscript>
+    </section>
+  {% endif %}
 
   {% if summary.voting_users %}
     <nav class="filters" aria-label="Sort users">
