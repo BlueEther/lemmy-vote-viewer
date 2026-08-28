@@ -36,6 +36,9 @@ from vote_viewer.routes import search as search_routes
 
 AUTH_MANAGER = viewer.app.extensions["vote_viewer_auth"]
 GRAPH_CACHE = viewer.app.extensions["vote_viewer_graph_cache"]
+OVERVIEW_GRAPH_CACHE = viewer.app.extensions[
+    "vote_viewer_overview_graph_cache"
+]
 
 
 class FakeResponse:
@@ -99,6 +102,7 @@ class VoteViewerTests(unittest.TestCase):
     def setUp(self):
         AUTH_MANAGER.cache.clear()
         GRAPH_CACHE.clear()
+        OVERVIEW_GRAPH_CACHE.clear()
         self.client = viewer.app.test_client()
 
     def request_as(self, payload, path="/"):
@@ -615,7 +619,6 @@ class VoteViewerTests(unittest.TestCase):
         handle_position = html.index("@BlueEther@lemmy.nz")
         self.assertLess(name_position, counts_position)
         self.assertLess(counts_position, handle_position)
-
         context["content_counts_enabled"] = False
         with viewer.app.test_request_context("/"):
             html = viewer.render_template("instance.html", **context)
@@ -651,6 +654,10 @@ class VoteViewerTests(unittest.TestCase):
         }
         database = ScriptedDatabase([None, [overview]])
         context = {}
+        enabled = replace(
+            viewer.CONFIG,
+            enable_community_vote_graphs=True,
+        )
 
         def capture_template(template_name, **values):
             context["template_name"] = template_name
@@ -658,6 +665,10 @@ class VoteViewerTests(unittest.TestCase):
             return "rendered"
 
         with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
             patch.object(overview_routes, "db", return_value=database),
             patch.object(
                 overview_routes,
@@ -709,6 +720,10 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(context["sort"], "recent")
         self.assertEqual(context["pagination"]["page"], 2)
         self.assertTrue(context["content_counts_enabled"])
+        self.assertEqual(
+            context["vote_graph_url"],
+            "/graph/community?community_id=77",
+        )
         overview_sql = database.queries[1][0]
         self.assertIn("authored_post.community_id", overview_sql)
         self.assertIn("parent_post.community_id", overview_sql)
@@ -729,11 +744,68 @@ class VoteViewerTests(unittest.TestCase):
         handle_position = html.index("@BlueEther@lemmy.nz")
         self.assertLess(name_position, counts_position)
         self.assertLess(counts_position, handle_position)
+        self.assertIn('data-vote-graph-url="/graph/community?', html)
 
         context["content_counts_enabled"] = False
         with viewer.app.test_request_context("/"):
             html = viewer.render_template("community.html", **context)
         self.assertNotIn("Day Total — Posts:", html)
+
+    def test_community_vote_graph_uses_timeout_window_and_cache(self):
+        graph_rows = [
+            {
+                "day": date(2026, 8, 27),
+                "total": 3,
+                "up": 2,
+                "down": 1,
+                "neutral": 0,
+            },
+            {
+                "day": date(2026, 8, 28),
+                "total": 5,
+                "up": 4,
+                "down": 1,
+                "neutral": 0,
+            },
+        ]
+        enabled = replace(
+            viewer.CONFIG,
+            enable_community_vote_graphs=True,
+        )
+        database = ScriptedDatabase([None, graph_rows])
+
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(overview_routes, "db", return_value=database),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/graph/community?community_id=77",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["X-Vote-Graph-Cache"], "miss")
+        self.assertIn(b"Votes in community by day", response.data)
+        self.assertIn(
+            b"2026-08-28: 5 total, 4 up, 1 down",
+            response.data,
+        )
+        self.assertEqual(
+            database.queries,
+            [
+                (
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    ("12s",),
+                ),
+                (
+                    queries.COMMUNITY_VOTE_GRAPH_SQL,
+                    (77, "UTC", 30),
+                ),
+            ],
+        )
 
     def test_user_summary_shows_post_and_comment_counts(self):
         user = {

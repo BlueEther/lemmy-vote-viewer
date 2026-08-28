@@ -199,7 +199,9 @@ ENABLE_DOMAIN_SEARCH=false
 ENABLE_INSTANCE_CONTENT_COUNTS=true
 ENABLE_COMMUNITY_CONTENT_COUNTS=true
 ENABLE_USER_VOTE_GRAPHS=true
+ENABLE_COMMUNITY_VOTE_GRAPHS=false
 USER_VOTE_GRAPH_CACHE_SECONDS=300
+OVERVIEW_VOTE_GRAPH_CACHE_SECONDS=1800
 INSTANCE_QUERY_TIMEOUT_SECONDS=12
 VOTE_WINDOW_DAYS=30
 LEMMY_NETWORK=lemmy-easy-deploy_default
@@ -238,21 +240,28 @@ cp .env.example .env
 - `ENABLE_USER_VOTE_GRAPHS` accepts `true` or `false` and defaults to `true`.
   Set it to `false` to hide the daily graphs on user Cast and Received views
   and skip their additional queries.
+- `ENABLE_COMMUNITY_VOTE_GRAPHS` accepts `true` or `false` and defaults to
+  `false`. Enable it to load a daily vote graph asynchronously on community
+  overview pages.
 - `USER_VOTE_GRAPH_CACHE_SECONDS` controls the shared user-graph cache and
   defaults to 300 seconds. Graphs load after the main page so their heavier
   queries do not delay the rest of the user history. The cache is held in the
   container's `/tmp` tmpfs, shared by both Gunicorn workers, and cleared when
   the container is recreated. A value of `0` disables result reuse while
   retaining request coalescing.
+- `OVERVIEW_VOTE_GRAPH_CACHE_SECONDS` controls the shared community-graph cache
+  and defaults to 1800 seconds. Its entries are also held in the container's
+  `/tmp` tmpfs and cleared when the container is recreated. A value of `0`
+  disables result reuse while retaining request coalescing.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance and community
   overview queries, the community-activity aggregation on item-voter pages,
   and received-vote graphs. It defaults to 12 seconds and is constrained to
   5–12 seconds so it remains below the Gunicorn worker timeout.
 - `VOTE_WINDOW_DAYS` controls how many days of locally recorded votes
   are included in instance and community overview totals and item-voter
-  community activity, and the number of days shown in user vote graphs. It
-  defaults to 30 and is constrained to 1–365 days. Larger windows make these
-  queries more expensive.
+  community activity, and the number of days shown in user and community vote
+  graphs. It defaults to 30 and is constrained to 1–365 days. Larger windows
+  make these queries more expensive.
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
 - `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
   It is used to identify and link to the instance in the viewer UI.

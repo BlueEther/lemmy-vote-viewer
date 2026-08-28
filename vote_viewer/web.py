@@ -29,6 +29,10 @@ def graph_cache():
     return current_app.extensions["vote_viewer_graph_cache"]
 
 
+def overview_graph_cache():
+    return current_app.extensions["vote_viewer_overview_graph_cache"]
+
+
 def db():
     return connect_database(config().database_url)
 

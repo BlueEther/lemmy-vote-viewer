@@ -28,6 +28,11 @@ app.extensions["vote_viewer_graph_cache"] = GraphCache(
     CONFIG.user_vote_graph_cache_seconds,
     CONFIG.instance_query_timeout_seconds + 3,
 )
+app.extensions["vote_viewer_overview_graph_cache"] = GraphCache(
+    "/tmp/lemmy-vote-viewer-overview-graphs.sqlite3",
+    CONFIG.overview_vote_graph_cache_seconds,
+    CONFIG.instance_query_timeout_seconds + 3,
+)
 
 FEDERATION_HAIKU = (
     "Beyond this node's reach",
