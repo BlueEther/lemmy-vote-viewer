@@ -35,6 +35,8 @@ comments, and review recent voting activity by instance or community.
 - Filter cast and received histories by local or known remote community
 - Compare votes cast and received across communities in a grouped summary
 - Open a community overview showing recent voters and their vote totals
+- Enter community searches and filters as `community` or
+  `community@instance`; the older leading `!` remains optional
 - Sort cast histories by date and received histories by date or score
 - Review optional instance-level summaries and recent per-user vote totals
 - Follow links to local profiles, content, vote histories, and remote originals
@@ -60,7 +62,8 @@ private vulnerability reporting, deployment boundaries, and operator guidance.
 ## Security note
 
 This viewer exposes voting data publicly by default. It can reuse the local
-Lemmy login to restrict ordinary searches, instance overviews, or both.
+Lemmy login to restrict ordinary searches, instance and community overviews,
+or both.
 Operators should decide whether public access is appropriate for their
 deployment and configure access controls if needed.
 
@@ -71,10 +74,10 @@ Received-vote totals come from the local Lemmy database's post and comment
 aggregates. They do not include votes that were never federated to the local
 instance.
 
-Instance-level search can reveal aggregate behaviour that may not otherwise be
-easy to discover. It is disabled by default. Enabling it should be an informed
-deployment decision and does not replace authentication or proxy access
-controls.
+Instance and community overview searches can reveal aggregate behaviour that
+may not otherwise be easy to discover. They are disabled by default. Enabling
+them should be an informed deployment decision and does not replace
+authentication or proxy access controls.
 
 Instance-level totals aggregate recent, locally stored `post_like` and
 `comment_like` records. The window defaults to 30 days and is configurable.
@@ -90,12 +93,13 @@ instance overview.
 - Add database-backed integration tests for supported Lemmy releases.
 - Improve deep-page performance by replacing large `OFFSET` queries with
   cursor-based pagination.
-- refactor code
 
 ### Possible enhancements
 
 - Add time based voting graphs
-- All Instance and Community overview - may be expensive on work and SQL
+- Add browse-all instance and community activity lists; these may be expensive
+  in both application work and SQL (see
+  [future expansion ideas](docs/future-expansion-ideas.md)).
 - Add configurable date formatting.
 - Add date-range filtering.
 - Add a health-check endpoint.
@@ -121,11 +125,11 @@ cd lemmy-vote-viewer
 ```
 
 The default checkout follows `main`. For a reproducible production deployment,
-select a release tag instead (replace `v0.8.2` with the version being deployed):
+select a release tag instead (replace `vX.Y.Z` with the version being deployed):
 
 ```bash
 git fetch --tags
-git switch --detach v0.8.2
+git switch --detach vX.Y.Z
 ```
 
 To follow `main`:
@@ -161,7 +165,7 @@ For a tagged deployment:
 
 ```bash
 git fetch --tags
-git switch --detach v0.8.2
+git switch --detach vX.Y.Z
 ```
 
 Reapply the read-only database grants after updating. This is safe to rerun and
@@ -228,12 +232,14 @@ cp .env.example .env
   `false` to hide post/comment totals and skip their additional database work
   on instance or community pages. Community content counts also control the
   community-scoped post, comment, and vote totals on item-voter pages.
-- `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance-overview query.
+- `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance and community
+  overview queries and the community-activity aggregation on item-voter pages.
   It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
   below the Gunicorn worker timeout.
 - `INSTANCE_VOTE_WINDOW_DAYS` controls how many days of locally recorded votes
-  are included in instance-level totals. It defaults to 30 and is constrained
-  to 1–365 days. Larger windows make instance searches more expensive.
+  are included in instance and community overview totals and item-voter
+  community activity. It defaults to 30 and is constrained to 1–365 days.
+  Larger windows make these queries more expensive.
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
 - `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
   It is used to identify and link to the instance in the viewer UI.
@@ -435,7 +441,8 @@ result purpose, and performance characteristics, see the
 This viewer shows the current vote state stored by this Lemmy instance.
 It is not a permanent audit log of removed or changed votes.
 Remote-user data is limited to what has already federated to and is stored by this instance.
-Instance-level totals are limited to the configured recent-vote window, which
+Instance and community overview totals, plus community activity shown for
+voters on item pages, are limited to the configured recent-vote window, which
 defaults to 30 days.
 
 ## Local database testing (preproduction testing)
@@ -525,14 +532,14 @@ expectations, documentation requirements, and the pull request checklist.
 ## LLM declaration
 
 ChatGPT 5.6 Sol was used for the initial framework and SQL, followed by manual
-review and further work with LLM support. 
-An LLM was used to create the HTML templates, which werethen manually edited 
-to refine the layout and add elements. Codex was then used during further development for the templates etc
+review and further work with LLM support. An LLM was used to create the initial
+HTML templates, which were then manually edited to refine the layout and add
+elements.
 
-Codex was used to refactor the SQL for significant performance improvements and
-to extend instance, community, and user search functionality.
-
-ChatGPT was used to write documentation - with full review.
+Codex was used for later template and application development, the modular
+refactor, SQL performance improvements, and extensions to instance, community,
+and user search functionality. ChatGPT was used to draft documentation, which
+was then reviewed against the implementation.
 
 Security was then checked with Codex and GitHub Copilot.
 

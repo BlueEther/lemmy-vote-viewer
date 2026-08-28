@@ -41,6 +41,14 @@ docker inspect lemmy-vote-viewer \
 Avoid commands that dump the container environment because `DATABASE_URL`
 contains the database password.
 
+The supplied container writes Gunicorn access and error output to standard
+output and standard error, so `docker logs` can read it while Docker retains
+the container logs. The application does not create its own persistent log
+files. Retention depends on the host's Docker logging driver and rotation
+settings, and recreating or pruning a container can make its old logs
+unavailable. Configure host-level log retention before an incident if logs
+must survive rebuilds.
+
 ## HTTP status guide
 
 | Status | Usual meaning |
@@ -335,8 +343,9 @@ Database query timed out for GET ...
 ```
 
 The standard database connection uses a five-second statement timeout. Instance
-and community overviews temporarily use `INSTANCE_QUERY_TIMEOUT_SECONDS`, which
-is constrained to 5–12 seconds so it remains below the Gunicorn worker timeout.
+and community overviews, plus the community-activity aggregation on item-voter
+pages, temporarily use `INSTANCE_QUERY_TIMEOUT_SECONDS`, which is constrained
+to 5–12 seconds so it remains below the Gunicorn worker timeout.
 
 For slow instance or community overviews:
 
@@ -355,9 +364,10 @@ not parallel. Giving Docker more cores does not guarantee that one query will
 use them. Diagnose the plan and rows processed rather than treating low total
 CPU utilization as proof that Docker is limiting the container.
 
-For slow user history or item-voter pages, reducing the overview vote window
-will not help because that window applies only to instance and community
-overview totals. Identify the exact route and SQL before changing settings.
+For slow item-voter pages, disabling `ENABLE_COMMUNITY_CONTENT_COUNTS` skips the
+community-activity aggregation, and reducing `INSTANCE_VOTE_WINDOW_DAYS` may
+reduce its cost. The window does not affect ordinary user-history queries.
+Identify the exact route and SQL before changing settings.
 
 ## Generic HTTP 500 errors
 
@@ -396,8 +406,9 @@ generally sees remote activity only when relevant content or communities are
 federated to it. Results from two Lemmy instances can therefore differ without
 either viewer being incorrect.
 
-Instance and community overview totals cover only the configured recent window.
-Ordinary user histories are not limited by that setting.
+Instance and community overview totals, and community activity totals on
+item-voter pages, cover only the configured recent window. Ordinary user
+histories are not limited by that setting.
 
 If an ActivityPub URL is not found, confirm that the exact post or comment is
 known to the local Lemmy instance and belongs to a public, active community.

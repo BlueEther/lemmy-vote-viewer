@@ -220,7 +220,8 @@ When a report is confirmed, the maintainer will determine the affected versions
 and coordinate a fix on a private basis where practical. A security release
 should include:
 
-- a new patch version unless the fix requires a larger compatibility change;
+- a new final-component version unless the fix requires a larger compatibility
+  change;
 - an annotated release tag on the fixed `main` commit;
 - upgrade or mitigation instructions;
 - database-grant or configuration changes, if required; and
