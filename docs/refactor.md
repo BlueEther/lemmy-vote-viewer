@@ -1,10 +1,13 @@
 # Refactor `app.py` into modules
 
-At 2,453 lines, splitting `app.py` into modules is now worthwhile. The issue is
-not only its length: the file currently combines configuration, authentication,
-database connections, 17 SQL blocks, URL parsing, result enrichment, and five
-routes. The `index()` route alone contains several distinct search and view
-paths.
+> **Status:** The module extraction shipped in version 0.10.0. This document is
+> retained as the implementation record; unchecked completion criteria below
+> identify follow-up verification work, not unfinished module extraction.
+
+Before version 0.10.0, `app.py` had reached 2,453 lines and combined
+configuration, authentication, database connections, SQL blocks, URL parsing,
+result enrichment, and routes. The refactor separated those responsibilities
+into the package structure recorded below.
 
 This must be a behavior-preserving refactor. New features and query redesigns
 should be handled separately so regressions can be attributed to a specific
@@ -274,5 +277,5 @@ the versioning guidance in [`releasing.md`](releasing.md).
 - [ ] Root and prefixed deployments generate correct links.
 - [ ] Representative desktop and mobile views are unchanged.
 - [ ] SQL text, parameters, query plans, and timings show no unintended change.
-- [ ] Contributor, unit-test, architecture, and release documentation references
+- [x] Contributor, unit-test, architecture, and release documentation references
   are updated where required.

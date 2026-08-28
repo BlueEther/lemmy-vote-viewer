@@ -216,10 +216,10 @@ def normalize_instance_domain(value):
 
 def parse_community_handle(value):
     value = value.strip()
-    if not value.startswith("!") or len(value) > 512:
+    if len(value) > 512:
         return None
 
-    handle = value[1:]
+    handle = value[1:] if value.startswith("!") else value
     if "@" in handle:
         name, domain = handle.rsplit("@", 1)
         domain = normalize_instance_domain(domain)

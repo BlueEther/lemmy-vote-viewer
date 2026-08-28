@@ -3,7 +3,8 @@
 Lemmy Vote Viewer reads Lemmy's PostgreSQL schema directly. This document
 describes every application query. Reusable SQL constants, generated variants,
 and controlled sort expressions are defined in `vote_viewer/queries.py`;
-small route-specific statements may remain inline while the refactor proceeds.
+small route-specific statements remain inline where a shared constant would
+not improve clarity.
 
 [`db-grants.sql`](../db-grants.sql) is the authoritative list of database
 columns available to the viewer. See the
@@ -20,9 +21,10 @@ Every database connection requests:
 - dictionary-like result rows through Psycopg's `dict_row` factory.
 
 The dedicated `vote_viewer` role applies equivalent read-only and timeout
-settings for defense in depth. Instance and community overview routes replace
-the five-second statement timeout for their current transaction with the
-configured `INSTANCE_QUERY_TIMEOUT_SECONDS`, constrained to 5–12 seconds.
+settings for defense in depth. Instance and community overview routes, and the
+item-voter community-activity query, replace the five-second statement timeout
+for their current transaction with the configured
+`INSTANCE_QUERY_TIMEOUT_SECONDS`, constrained to 5–12 seconds.
 
 Query values use Psycopg `%s` parameters. The application interpolates SQL text
 only in these controlled cases:
@@ -67,8 +69,8 @@ Raw request values are not interpolated into SQL text.
 
 **Caller:** `resolve_community()`
 
-**Purpose:** Resolve `!community` or `!community@instance` to a single public,
-active community row.
+**Purpose:** Resolve `community` or `community@instance` (with an optional
+leading `!`) to a single public, active community row.
 
 **Parameters:**
 
@@ -383,7 +385,8 @@ Returns at most one instance row.
 
 ### Overview timeout statement
 
-**Callers:** Instance and community overview routes
+**Callers:** Instance and community overview routes and item-voter activity
+queries
 
 ```sql
 SELECT set_config('statement_timeout', %s, true)

@@ -4,7 +4,7 @@ The unit test suite is in [`tests/test_app.py`](../tests/test_app.py),
 [`tests/test_auth.py`](../tests/test_auth.py),
 [`tests/test_config.py`](../tests/test_config.py), and
 [`tests/test_database.py`](../tests/test_database.py). It uses Python's
-standard-library `unittest` framework and currently contains 53 tests.
+standard-library `unittest` framework and currently contains 56 tests.
 
 The suite covers authentication, authorization, disabled-feature handling,
 community-handle parsing, URL construction, SQL-query selection, link
@@ -142,6 +142,12 @@ parameters, rendered item type, second-page state, and the page-scoped SQL
 aggregates used for each voter's configured-window activity in the item's
 community. It also verifies that disabling community content counts skips the
 item activity query and hides the totals.
+
+### `test_item_activity_counts_can_be_disabled`
+
+Verifies independently that disabling community content counts prevents the
+item-voter activity query from running and omits the community post, comment,
+and vote totals from voter rows.
 
 ### `test_instance_overview_selects_sort_timeout_and_page`
 
@@ -331,14 +337,15 @@ specific timeout message.
 
 ### `test_community_handle_parser_accepts_local_and_remote_handles`
 
-Verifies that the parser accepts both `!newzealand` and
-`!technology@lemmy.world`, trims surrounding whitespace, lowercases the
-instance, and removes a trailing dot from the instance name.
+Verifies that the parser accepts both `newzealand` and
+`technology@lemmy.world` without a leading `!`, retains compatibility with an
+optional `!`, trims surrounding whitespace, lowercases the instance, and
+removes a trailing dot from the instance name.
 
 ### `test_community_handle_parser_rejects_invalid_values`
 
-Verifies that the parser rejects a missing `!`, an empty name, a missing
-instance after `@`, a path component, and whitespace inside a community name.
+Verifies that the parser rejects an empty name, a missing instance after `@`,
+a path component, and whitespace inside a community name.
 Each invalid value is reported as a separate `subTest` case.
 
 ### `test_index_url_preserves_community_filter`

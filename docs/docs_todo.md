@@ -5,7 +5,7 @@
 ### Release process
 
 - [x] Create `docs/releasing.md` covering:
-  - the project's patch, minor, and major versioning policy;
+  - the project's stability, major, and minor versioning policy;
   - updating `VERSION`;
   - the branch, commit, push, pull request, and merge workflow;
   - when release tags should be created;
@@ -64,4 +64,4 @@
 
 ## Documentation links
 
-- [x] Link [`docs/unit-tests.md`](docs/unit-tests.md) from `README.md`.
+- [x] Link [`docs/unit-tests.md`](unit-tests.md) from `README.md`.

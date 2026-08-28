@@ -10,7 +10,8 @@ Operators updating an installed viewer should instead follow
 ## Release model
 
 `VERSION` is the single source of truth for the application version. It
-contains a plain semantic version without a leading `v`, for example:
+contains the project's three-component version without a leading `v`, for
+example:
 
 ```text
 0.9.0
@@ -30,42 +31,47 @@ Do not hard-code the version in Python or the HTML templates.
 
 ## Choosing the version
 
-The project uses `MAJOR.MINOR.PATCH` versions. While the project remains in the
-`0.x` series, use the following practical policy:
+The project uses `STABILITY.MAJOR.MINOR` versions. This is a project convention,
+not Semantic Versioning. In the current `0.x.y` development series:
 
-### Patch release
+### Minor release
 
-Increment the patch component, such as `0.8.2` to `0.8.3`, for:
+Increment the final component, such as `0.10.5` to `0.10.6`, for most routine
+releases, including:
 
 - bug fixes;
 - query-performance improvements that preserve visible behavior;
 - security hardening that does not change configuration expectations;
 - small layout, wording, or link-behavior corrections; and
-- internal refactoring with no new user-facing capability.
+- internal refactoring with no new user-facing capability;
+- modest user-visible additions; and
+- narrowly scoped configuration options.
 
 Documentation-only changes normally do not need a version bump or release.
 
-### Minor release
+### Major release
 
-Increment the minor component and reset the patch component, such as `0.8.2`
-to `0.9.0`, for:
+Increment the middle component and reset the final component, such as `0.10.6`
+to `0.11.0`, only for a substantial release line, such as:
 
-- a new user-visible feature or view;
-- a significant new configuration option;
+- a large new user-visible capability or group of related views;
 - a material change to authentication or authorization;
 - support for a new Lemmy database schema; or
 - a substantial change to data interpretation or deployment behavior.
 
-### Major release
+Small UI changes, bug fixes, and isolated feature flags are not sufficient by
+themselves for a middle-component bump.
 
-Use `1.0.0` when the project is ready to declare a stable compatibility and
-configuration contract. After 1.0, increment the major component for breaking
-changes to that contract.
+### Stability release
 
-When uncertain between patch and minor, consider whether an operator or user
-would describe the release as gaining a capability. If so, prefer a minor
-release. Record any required operator action prominently in the release notes,
-regardless of the version size.
+Change the first component from `0` to `1` when the project is ready to declare
+a stable compatibility and configuration contract. Any later change to the
+stability component requires an explicitly documented project policy.
+
+When uncertain between the final and middle components, prefer the final
+component unless the release establishes a substantial new product or
+compatibility line. Record any required operator action prominently in the
+release notes regardless of the version size.
 
 ## Prepare the branch
 
@@ -259,7 +265,7 @@ git push origin v0.9.0
 ```
 
 Never move or reuse a published release tag. If a released version is faulty,
-fix it in a new patch release.
+fix it in a new final-component release.
 
 ## Publish the GitHub release
 
