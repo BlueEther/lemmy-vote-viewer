@@ -32,12 +32,16 @@ from vote_viewer import web
 from vote_viewer.routes import items as item_routes
 from vote_viewer.routes import overviews as overview_routes
 from vote_viewer.routes import search as search_routes
+from vote_viewer.routes import users as users_routes
 
 
 AUTH_MANAGER = viewer.app.extensions["vote_viewer_auth"]
 GRAPH_CACHE = viewer.app.extensions["vote_viewer_graph_cache"]
 OVERVIEW_GRAPH_CACHE = viewer.app.extensions[
     "vote_viewer_overview_graph_cache"
+]
+USERS_OVERVIEW_CACHE = viewer.app.extensions[
+    "vote_viewer_users_overview_cache"
 ]
 
 
@@ -103,6 +107,7 @@ class VoteViewerTests(unittest.TestCase):
         AUTH_MANAGER.cache.clear()
         GRAPH_CACHE.clear()
         OVERVIEW_GRAPH_CACHE.clear()
+        USERS_OVERVIEW_CACHE.clear()
         self.client = viewer.app.test_client()
 
     def request_as(self, payload, path="/"):
@@ -168,6 +173,20 @@ class VoteViewerTests(unittest.TestCase):
                 app_prefix="/votes",
             ),
             "/votes/item/comment/456?sort=oldest&page=3",
+        )
+        self.assertEqual(
+            links.build_users_url("down", 3, "/votes"),
+            "/votes/users/?sort=down&page=3",
+        )
+        self.assertEqual(
+            links.build_users_url("up", 2, "/votes", "received"),
+            "/votes/users/?view=received&sort=up&page=2",
+        )
+        self.assertEqual(
+            links.build_users_url(
+                "up", 2, "/votes", "received", cache_refresh=True
+            ),
+            "/votes/users/?view=received&sort=up&page=2&cache_refresh=1",
         )
 
     def request_index(self, path, results, community=None):
@@ -689,6 +708,157 @@ class VoteViewerTests(unittest.TestCase):
                 (
                     queries.INSTANCE_VOTE_GRAPH_SQL,
                     (9, "UTC", 30),
+                ),
+            ],
+        )
+
+    def test_users_overview_is_feature_gated_before_database_access(self):
+        disabled = replace(viewer.CONFIG, enable_users_overview=False)
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": disabled},
+            ),
+            patch.object(users_routes, "db") as database,
+        ):
+            page_response = self.client.get("/users/")
+            data_response = self.client.get("/users/data")
+
+        self.assertEqual(page_response.status_code, 404)
+        self.assertEqual(data_response.status_code, 404)
+        database.assert_not_called()
+
+    def test_users_overview_page_loads_data_asynchronously(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": enabled},
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/?view=received&sort=down&page=2",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"All users", response.data)
+        self.assertIn(b'src="/static/users.js"', response.data)
+        self.assertIn(
+            b'data-users-overview-url="/users/data?view=received&amp;sort=down&amp;page=2"',
+            response.data,
+        )
+        self.assertIn(
+            b'href="/users/?view=received&amp;sort=down&amp;page=2&amp;cache_refresh=1"',
+            response.data,
+        )
+
+    def test_users_overview_cache_refresh_redirects_to_clean_url(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(users_routes, "users_overview_cache") as cache,
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/?view=received&sort=down&page=2&cache_refresh=1",
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.headers["Location"],
+            "/users/?view=received&sort=down&page=2",
+        )
+        cache.return_value.clear.assert_called_once_with()
+
+    def test_users_overview_data_uses_timeout_pagination_and_cache(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        row = {
+            "voting_users": 250,
+            "id": 42,
+            "name": "Malyca",
+            "display_name": "Malyca",
+            "local": False,
+            "actor_id": "https://lemmy.zip/u/Malyca",
+            "instance_domain": "lemmy.zip",
+            "cast_total": 5867,
+            "cast_up": 5863,
+            "cast_down": 4,
+            "cast_neutral": 0,
+            "cast_posts": 1803,
+            "cast_comments": 4064,
+            "latest_vote_epoch": None,
+            "received_posts": 0,
+            "received_comments": 4249,
+            "received_total": 4249,
+            "received_up": 3979,
+            "received_down": 270,
+            "latest_received_vote_epoch": None,
+        }
+        content_row = {
+            "id": 42,
+            "post_count": 0,
+            "comment_count": 562,
+        }
+        database = ScriptedDatabase([None, [row], [content_row]])
+
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(users_routes, "db", return_value=database),
+        ):
+            first_response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/data?view=received&sort=down",
+            )
+            second_response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/data?view=cast&sort=up",
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(
+            first_response.headers["X-Users-Overview-Cache"], "miss"
+        )
+        self.assertEqual(
+            second_response.headers["X-Users-Overview-Cache"], "hit"
+        )
+        self.assertIn(b"@Malyca@lemmy.zip", first_response.data)
+        self.assertIn(b"Votes received", first_response.data)
+        self.assertIn(b'href="/users/?sort=down"', first_response.data)
+        self.assertIn(
+            b'href="/users/?view=cast&amp;sort=down"', first_response.data
+        )
+        self.assertIn(
+            b'class="filter-button active" href="/users/?view=received&amp;sort=down"',
+            first_response.data,
+        )
+        self.assertIn(b"Votes cast", first_response.data)
+        self.assertIn(
+            b'data-users-vote-kind="received"', first_response.data
+        )
+        self.assertIn(b"4249", first_response.data)
+        self.assertEqual(
+            database.queries,
+            [
+                (
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    ("12s",),
+                ),
+                (
+                    queries.USERS_OVERVIEW_SQL.format(
+                        vote_window_days=30,
+                    ),
+                    None,
+                ),
+                (
+                    queries.USERS_OVERVIEW_CONTENT_SQL.format(
+                        vote_window_days=30,
+                    ),
+                    None,
                 ),
             ],
         )

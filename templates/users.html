@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- Copyright (C) 2026 BlueEther@no.lastname.nz -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>All users · Lemmy Vote Viewer</title>
+  <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+  <script src="{{ app_prefix }}/static/users.js" defer></script>
+</head>
+<body>
+<main class="wrap users-wrap">
+  <p><a href="{{ app_prefix }}/">← Vote Viewer</a></p>
+
+  <header>
+    <h1>All users</h1>
+    <p class="muted">Users with votes recorded locally within the last {{ vote_window_days }} days. Cast totals include all locally recorded votes; received totals include votes on content in public, active communities.</p>
+    <p><a class="filter-button" href="{{ users_refresh_url }}">↻ Refresh cached data</a></p>
+  </header>
+
+  <section class="users-overview-loading" data-users-overview-url="{{ users_data_url }}" aria-busy="true" aria-live="polite">
+    <p class="notice" data-users-status>Loading the users overview…</p>
+    <noscript><p class="notice">JavaScript is required to load this overview.</p></noscript>
+  </section>
+
+  {% include "_footer.html" %}
+</main>
+</body>
+</html>

@@ -11,6 +11,8 @@ from .links import (
     build_index_url as _build_index_url,
     build_instance_url as _build_instance_url,
     build_item_url as _build_item_url,
+    build_users_data_url as _build_users_data_url,
+    build_users_url as _build_users_url,
     make_pagination as _make_pagination,
     parse_page as _parse_page,
 )
@@ -31,6 +33,10 @@ def graph_cache():
 
 def overview_graph_cache():
     return current_app.extensions["vote_viewer_overview_graph_cache"]
+
+
+def users_overview_cache():
+    return current_app.extensions["vote_viewer_users_overview_cache"]
 
 
 def db():
@@ -101,6 +107,20 @@ def build_community_overview_url(handle, sort="total", page=1):
         page,
         config().app_prefix,
     )
+
+
+def build_users_url(sort="total", page=1, view="all", cache_refresh=False):
+    return _build_users_url(
+        sort,
+        page,
+        config().app_prefix,
+        view,
+        cache_refresh,
+    )
+
+
+def build_users_data_url(sort="total", page=1, view="all"):
+    return _build_users_data_url(sort, page, config().app_prefix, view)
 
 
 def resolve_item_search(item_query):

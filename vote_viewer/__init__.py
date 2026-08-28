@@ -33,6 +33,12 @@ app.extensions["vote_viewer_overview_graph_cache"] = GraphCache(
     CONFIG.overview_vote_graph_cache_seconds,
     CONFIG.instance_query_timeout_seconds + 3,
 )
+app.extensions["vote_viewer_users_overview_cache"] = GraphCache(
+    "/tmp/lemmy-vote-viewer-users.sqlite3",
+    CONFIG.users_overview_cache_seconds,
+    CONFIG.instance_query_timeout_seconds + 3,
+    max_entries=64,
+)
 
 FEDERATION_HAIKU = (
     "Beyond this node's reach",
@@ -84,6 +90,7 @@ def inject_app_config():
         "search": settings.auth_search_require,
         "items": settings.auth_search_require,
         "overviews": settings.auth_instance_require,
+        "users": settings.auth_instance_require,
     }.get(request.blueprint)
     if feature_requirement == "disabled":
         auth_user = None
@@ -104,6 +111,12 @@ def inject_app_config():
         ),
         "domain_search_enabled": (
             settings.enable_domain_search
+            and auth_manager.access_requirement_met(
+                auth_user, settings.auth_instance_require
+            )
+        ),
+        "users_overview_enabled": (
+            settings.enable_users_overview
             and auth_manager.access_requirement_met(
                 auth_user, settings.auth_instance_require
             )

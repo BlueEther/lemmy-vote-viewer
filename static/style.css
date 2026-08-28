@@ -581,6 +581,79 @@ button { cursor: pointer; }
 
 .instance-history { white-space: nowrap; }
 
+.users-wrap { max-width: 1700px; }
+
+.users-overview-loading { min-height: 90px; }
+
+.users-overview-view-filter { padding-bottom: 0; }
+
+.users-overview-list {
+  border-top: 1px solid #2a2e37;
+}
+
+.users-overview-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 36%) minmax(720px, 64%);
+  gap: 30px;
+  align-items: center;
+  min-height: 126px;
+  padding: 20px 0;
+  border-bottom: 1px solid #2a2e37;
+}
+
+.users-overview-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.users-overview-name {
+  min-width: 0;
+  color: inherit;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.users-overview-name:hover,
+.users-overview-handle:hover { text-decoration: underline; }
+
+.users-overview-content { margin-top: 6px; }
+
+.users-overview-handle {
+  display: block;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.users-overview-votes {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.users-overview-vote-row {
+  display: grid;
+  grid-template-columns: 145px 100px 86px 76px repeat(2, minmax(120px, 1fr));
+  gap: 12px;
+  align-items: baseline;
+}
+
+.users-overview-vote-row.has-neutral {
+  grid-template-columns: 145px 100px 86px 76px 70px repeat(2, minmax(120px, 1fr));
+}
+
+.users-overview-vote-row > * { white-space: nowrap; }
+
+@media (max-width: 1150px) {
+  .users-overview-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
 .community-summary-table .community-cast-row td:not([rowspan]) {
   padding-bottom: 5px;
   border-bottom: 0;
@@ -788,4 +861,13 @@ blockquote {
     grid-row: 1;
     text-align: center;
   }
+
+  .users-overview-vote-row,
+  .users-overview-vote-row.has-neutral {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
+  }
+
+  .users-overview-vote-row > strong { grid-column: 1 / -1; }
+  .users-overview-vote-row > * { white-space: normal; }
 }
