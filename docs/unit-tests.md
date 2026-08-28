@@ -171,12 +171,13 @@ when community content counts are off.
 Renders the main user-search summary and verifies that the user's total known
 post and comment counts appear between the display name and handle.
 
-### `test_user_cast_graph_uses_window_filters_and_can_be_disabled`
+### `test_user_vote_graphs_use_window_filters_and_can_be_disabled`
 
-Renders a user Cast view with graphs enabled and verifies the configured
-window, content type, score, and timezone query parameters, daily graph labels,
-and stacked vote classes. It also verifies that disabling graphs skips the
-additional query and removes the graph from the page.
+Renders user Cast and Received views with graphs enabled and verifies their
+query selection, configured window, active filters, heavier received-query
+timeout, daily labels, and stacked vote classes. It also verifies that
+disabling graphs skips the additional query and removes the graph from the
+page.
 
 ### `test_logged_in_user_can_search_but_cannot_see_instance_search`
 

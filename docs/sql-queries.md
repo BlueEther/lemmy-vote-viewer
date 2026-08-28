@@ -47,6 +47,7 @@ Raw request values are not interpolated into SQL text.
 | `USER_VOTES_BY_COMMUNITY_SQL` / `USER_VOTES_OLDEST_BY_COMMUNITY_SQL` | Paginate community-filtered votes cast by a user | Vote, content, community, and person tables |
 | `USER_SUMMARY_SQL` | Count votes cast and filtered results | Vote, post, and community tables |
 | `USER_VOTE_GRAPH_SQL` | Group a user's filtered recent votes cast by local calendar day | Vote, post, and community tables |
+| `USER_RECEIVED_VOTE_GRAPH_SQL` | Group a user's filtered recent votes received by local calendar day | Vote, content, and community tables |
 | `USER_RECEIVED_SUMMARY_SQL` | Summarize votes received by a user's content | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_SQL` | Paginate unfiltered content that received votes | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL` | Paginate community-filtered content that received votes | Aggregate, content, and community tables |
@@ -236,6 +237,24 @@ public-community, content-type, score, and community filters as the Cast view,
 then groups upvotes, downvotes, neutral states, and totals by calendar day in
 the configured display timezone. It reports current locally stored vote state,
 not a permanent history of votes later removed or changed.
+
+### `USER_RECEIVED_VOTE_GRAPH_SQL`
+
+**Caller:** User Received view when `ENABLE_USER_VOTE_GRAPHS=true`
+
+**Purpose:** Produce one row per local calendar day for current votes recorded
+on content authored by the selected user.
+
+**Parameters:** User ID, content type, optional community ID, configured
+timezone, and `VOTE_WINDOW_DAYS`.
+
+The query joins current post and comment vote rows back to content authored by
+the user, applies the Received view's content-type and community filters, and
+groups the results in the configured display timezone. Prolific authors can
+require many indexed lookups, so this query uses the configured heavier-query
+timeout and can be disabled with `ENABLE_USER_VOTE_GRAPHS=false`. These daily
+counts come from current vote rows and may differ from aggregate received-vote
+totals.
 
 ## Votes received by a user
 

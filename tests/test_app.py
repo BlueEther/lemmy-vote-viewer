@@ -768,7 +768,7 @@ class VoteViewerTests(unittest.TestCase):
         self.assertLess(name_position, counts_position)
         self.assertLess(counts_position, handle_position)
 
-    def test_user_cast_graph_uses_window_filters_and_can_be_disabled(self):
+    def test_user_vote_graphs_use_window_filters_and_can_be_disabled(self):
         user = {
             "id": 42,
             "display_name": "BlueEther",
@@ -821,6 +821,41 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(
             database.queries[2][1],
             (42, "comment", -1, None, "UTC", 30),
+        )
+
+        received_database = ScriptedDatabase(
+            [cast, received, None, graph_rows, []]
+        )
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(
+                search_routes,
+                "db",
+                return_value=received_database,
+            ),
+            patch.object(search_routes, "resolve_user", return_value=user),
+        ):
+            received_response = self.request_as(
+                lemmy_user_payload(),
+                "/?user=blueether%40no.lastname.nz&view=received&type=comment",
+            )
+        self.assertIn(b"Votes received by day", received_response.data)
+        self.assertEqual(
+            received_database.queries[2],
+            (
+                "SELECT set_config('statement_timeout', %s, true)",
+                ("12s",),
+            ),
+        )
+        self.assertEqual(
+            received_database.queries[3],
+            (
+                queries.USER_RECEIVED_VOTE_GRAPH_SQL,
+                (42, "comment", None, "UTC", 30),
+            ),
         )
 
         disabled_database = ScriptedDatabase([cast, received, []])

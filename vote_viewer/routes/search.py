@@ -13,6 +13,7 @@ from ..queries import (
     USER_COMMUNITY_SUMMARY_SQL,
     USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
     USER_RECEIVED_ITEMS_SQL,
+    USER_RECEIVED_VOTE_GRAPH_SQL,
     USER_RECEIVED_SUMMARY_SQL,
     USER_SUMMARY_SQL,
     USER_VOTE_GRAPH_SQL,
@@ -163,6 +164,7 @@ def index():
     community = None
     user_suggestions = []
     vote_graph = None
+    vote_graph_title = None
 
     if username:
         with db() as conn:
@@ -212,21 +214,36 @@ def index():
                     )
                     received_summary = cur.fetchone()
 
-                    if (
-                        settings.enable_user_vote_graphs
-                        and history_view == "cast"
+                    if settings.enable_user_vote_graphs and history_view in (
+                        "cast",
+                        "received",
                     ):
-                        cur.execute(
-                            USER_VOTE_GRAPH_SQL,
-                            (
+                        if history_view == "cast":
+                            graph_sql = USER_VOTE_GRAPH_SQL
+                            graph_params = (
                                 user["id"],
                                 content_type,
                                 score_filter,
                                 community_id,
                                 settings.timezone_name,
                                 settings.vote_window_days,
-                            ),
-                        )
+                            )
+                            vote_graph_title = "Votes cast by day"
+                        else:
+                            cur.execute(
+                                "SELECT set_config('statement_timeout', %s, true)",
+                                (f"{settings.instance_query_timeout_seconds}s",),
+                            )
+                            graph_sql = USER_RECEIVED_VOTE_GRAPH_SQL
+                            graph_params = (
+                                user["id"],
+                                content_type,
+                                community_id,
+                                settings.timezone_name,
+                                settings.vote_window_days,
+                            )
+                            vote_graph_title = "Votes received by day"
+                        cur.execute(graph_sql, graph_params)
                         vote_graph = build_vote_graph(cur.fetchall())
 
                     if history_view == "cast":
@@ -494,5 +511,6 @@ def index():
         community_error=community_error,
         community_clear_url=community_clear_url,
         vote_graph=vote_graph,
+        vote_graph_title=vote_graph_title,
         vote_graph_window_days=settings.vote_window_days,
     )

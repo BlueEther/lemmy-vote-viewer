@@ -33,7 +33,8 @@ comments, and review recent voting activity by instance or community.
 - Inspect the voters recorded for individual posts and comments
 - Filter vote histories by content type and vote direction
 - Filter cast and received histories by local or known remote community
-- Graph a user's recent votes cast by day using the active history filters
+- Graph a user's recent votes cast or received by day using the active history
+  filters
 - Compare votes cast and received across communities in a grouped summary
 - Open a community overview showing recent voters and their vote totals
 - Enter community searches and filters as `community` or
@@ -234,12 +235,12 @@ cp .env.example .env
   on instance or community pages. Community content counts also control the
   community-scoped post, comment, and vote totals on item-voter pages.
 - `ENABLE_USER_VOTE_GRAPHS` accepts `true` or `false` and defaults to `true`.
-  Set it to `false` to hide the daily graph on user Cast views and skip its
-  additional query.
+  Set it to `false` to hide the daily graphs on user Cast and Received views
+  and skip their additional queries.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance and community
-  overview queries and the community-activity aggregation on item-voter pages.
-  It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
-  below the Gunicorn worker timeout.
+  overview queries, the community-activity aggregation on item-voter pages,
+  and received-vote graphs. It defaults to 12 seconds and is constrained to
+  5–12 seconds so it remains below the Gunicorn worker timeout.
 - `VOTE_WINDOW_DAYS` controls how many days of locally recorded votes
   are included in instance and community overview totals and item-voter
   community activity, and the number of days shown in user vote graphs. It

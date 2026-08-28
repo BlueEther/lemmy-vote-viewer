@@ -281,6 +281,77 @@ GROUP BY d.day
 ORDER BY d.day
 """
 
+USER_RECEIVED_VOTE_GRAPH_SQL = """
+WITH filters AS (
+    SELECT
+        %s::integer AS user_id,
+        %s::text AS content_type,
+        %s::integer AS community_id,
+        %s::text AS timezone_name,
+        %s::integer AS window_days
+),
+bounds AS (
+    SELECT
+        f.*,
+        (CURRENT_TIMESTAMP AT TIME ZONE f.timezone_name)::date AS end_day,
+        (CURRENT_TIMESTAMP AT TIME ZONE f.timezone_name)::date
+            - (f.window_days - 1) AS start_day
+    FROM filters f
+),
+days AS (
+    SELECT generate_series(
+        b.start_day,
+        b.end_day,
+        INTERVAL '1 day'
+    )::date AS day
+    FROM bounds b
+),
+votes AS (
+    SELECT
+        (pl.published AT TIME ZONE b.timezone_name)::date AS day,
+        pl.score
+    FROM bounds b
+    JOIN post p ON p.creator_id = b.user_id
+    JOIN post_like pl ON pl.post_id = p.id
+    JOIN community c ON c.id = p.community_id
+    WHERE b.content_type IN ('all', 'post')
+      AND (b.community_id IS NULL OR c.id = b.community_id)
+      AND pl.published >= b.start_day AT TIME ZONE b.timezone_name
+      AND pl.published < (b.end_day + 1) AT TIME ZONE b.timezone_name
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+
+    UNION ALL
+
+    SELECT
+        (cl.published AT TIME ZONE b.timezone_name)::date AS day,
+        cl.score
+    FROM bounds b
+    JOIN comment cm ON cm.creator_id = b.user_id
+    JOIN comment_like cl ON cl.comment_id = cm.id
+    JOIN post p ON p.id = cm.post_id
+    JOIN community c ON c.id = p.community_id
+    WHERE b.content_type IN ('all', 'comment')
+      AND (b.community_id IS NULL OR c.id = b.community_id)
+      AND cl.published >= b.start_day AT TIME ZONE b.timezone_name
+      AND cl.published < (b.end_day + 1) AT TIME ZONE b.timezone_name
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+)
+SELECT
+    d.day,
+    COUNT(v.score)::integer AS total,
+    COUNT(*) FILTER (WHERE v.score > 0)::integer AS up,
+    COUNT(*) FILTER (WHERE v.score < 0)::integer AS down,
+    COUNT(*) FILTER (WHERE v.score = 0)::integer AS neutral
+FROM days d
+LEFT JOIN votes v ON v.day = d.day
+GROUP BY d.day
+ORDER BY d.day
+"""
+
 USER_RECEIVED_SUMMARY_SQL = """
 WITH received_by_type AS (
     SELECT
