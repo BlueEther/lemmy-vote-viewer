@@ -1,17 +1,36 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from flask import Blueprint, abort, redirect, render_template, request
+import hashlib
+import json
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    make_response,
+    redirect,
+    render_template,
+    request,
+)
+import psycopg
 
 from ..links import local_community_path, normalize_instance_domain, safe_http_url
 from ..queries import (
     COMMUNITY_OVERVIEW_SORTS,
     COMMUNITY_OVERVIEW_SQL,
+    COMMUNITY_VOTE_GRAPH_SQL,
     INSTANCE_LOOKUP_SQL,
     INSTANCE_OVERVIEW_SQL,
     INSTANCE_SORTS,
+    INSTANCE_VOTE_GRAPH_SQL,
 )
-from ..services import enrich_community_user, enrich_instance_user, resolve_community
+from ..services import (
+    build_vote_graph,
+    enrich_community_user,
+    enrich_instance_user,
+    resolve_community,
+)
 from ..web import (
     build_community_overview_url,
     build_instance_url,
@@ -19,11 +38,132 @@ from ..web import (
     db,
     enforce_access,
     make_pagination,
+    overview_graph_cache,
     parse_page,
 )
 
 
 blueprint = Blueprint("overviews", __name__)
+
+
+def graph_response(payload, status=200, cache_status=None):
+    response = make_response(payload, status)
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    if cache_status:
+        response.headers["X-Vote-Graph-Cache"] = cache_status
+    return response
+
+
+def positive_id_query_parameter(name):
+    try:
+        value = int(request.args.get(name, ""))
+    except ValueError:
+        abort(400)
+    if value <= 0:
+        abort(400)
+    return value
+
+
+def cached_overview_vote_graph(entity_type, entity_id, graph_sql, title):
+    settings = config()
+    cache_key = hashlib.sha256(
+        json.dumps(
+            (
+                entity_type,
+                entity_id,
+                settings.timezone_name,
+                settings.vote_window_days,
+            ),
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    cache = overview_graph_cache()
+    cache_state, cached_payload = cache.claim(cache_key)
+    if cache_state == "hit":
+        return graph_response(cached_payload, cache_status="hit")
+    if cache_state == "busy":
+        response = graph_response("", status=202, cache_status="busy")
+        response.headers["Retry-After"] = "1"
+        return response
+
+    try:
+        with db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    (f"{settings.instance_query_timeout_seconds}s",),
+                )
+                cur.execute(
+                    graph_sql,
+                    (
+                        entity_id,
+                        settings.timezone_name,
+                        settings.vote_window_days,
+                    ),
+                )
+                vote_graph = build_vote_graph(cur.fetchall())
+                payload = render_template(
+                    "_vote_graph.html",
+                    vote_graph=vote_graph,
+                    vote_graph_title=title,
+                    vote_graph_window_days=settings.vote_window_days,
+                )
+                cache.store(cache_key, payload)
+                return graph_response(payload, cache_status="miss")
+    except psycopg.errors.QueryCanceled:
+        cache.release(cache_key)
+        current_app.logger.warning(
+            "%s vote graph query timed out for %s",
+            entity_type.title(),
+            entity_id,
+        )
+        return graph_response(
+            render_template(
+                "_vote_graph_error.html",
+                message="The graph took too long to calculate. Try again later.",
+            ),
+            status=503,
+            cache_status="error",
+        )
+    except Exception:
+        cache.release(cache_key)
+        raise
+
+
+@blueprint.route("/graph/community")
+def community_vote_graph():
+    settings = config()
+    if (
+        not settings.enable_domain_search
+        or not settings.enable_community_vote_graphs
+    ):
+        abort(404)
+    enforce_access(settings.auth_instance_require)
+    community_id = positive_id_query_parameter("community_id")
+    return cached_overview_vote_graph(
+        "community",
+        community_id,
+        COMMUNITY_VOTE_GRAPH_SQL,
+        "Votes in community by day",
+    )
+
+
+@blueprint.route("/graph/instance")
+def instance_vote_graph():
+    settings = config()
+    if (
+        not settings.enable_domain_search
+        or not settings.enable_instance_vote_graphs
+    ):
+        abort(404)
+    enforce_access(settings.auth_instance_require)
+    instance_id = positive_id_query_parameter("instance_id")
+    return cached_overview_vote_graph(
+        "instance",
+        instance_id,
+        INSTANCE_VOTE_GRAPH_SQL,
+        "Votes by instance users by day",
+    )
 
 
 @blueprint.route("/instance/<domain>")
@@ -52,6 +192,12 @@ def instance_overview(domain):
             canonical_domain = normalize_instance_domain(instance["domain"])
             if not canonical_domain:
                 abort(404)
+            instance_graph_url = (
+                f"{settings.app_prefix}/graph/instance"
+                f"?instance_id={instance['id']}"
+                if settings.enable_instance_vote_graphs
+                else None
+            )
 
             requested_offset = (requested_page - 1) * settings.page_size
             overview_sql = INSTANCE_OVERVIEW_SQL.format(
@@ -116,6 +262,7 @@ def instance_overview(domain):
         pagination=pagination,
         vote_window_days=settings.vote_window_days,
         content_counts_enabled=settings.enable_instance_content_counts,
+        vote_graph_url=instance_graph_url,
     )
 
 
@@ -142,6 +289,12 @@ def community_overview(community_handle):
                 abort(404)
 
             canonical_handle = community["handle"]
+            community_graph_url = (
+                f"{settings.app_prefix}/graph/community"
+                f"?community_id={community['id']}"
+                if settings.enable_community_vote_graphs
+                else None
+            )
             community["local_path"] = local_community_path(canonical_handle)
             community["remote_url"] = (
                 None
@@ -220,4 +373,5 @@ def community_overview(community_handle):
         pagination=pagination,
         vote_window_days=settings.vote_window_days,
         content_counts_enabled=settings.enable_community_content_counts,
+        vote_graph_url=community_graph_url,
     )

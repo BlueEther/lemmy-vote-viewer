@@ -212,10 +212,14 @@ three to six hours, excluding unexpected query optimization.
 
 ## Instance and community voting graphs
 
-### Proposed behavior
+The initial asynchronous, cached implementation is now available behind
+disabled-by-default instance and community feature flags. The application-owned
+daily rollup described below remains a possible future optimization.
 
-Add daily upvote, downvote, and neutral-vote graphs to the existing instance
-and community overview pages. The graphs would use `VOTE_WINDOW_DAYS` and the
+### Implemented behavior
+
+Daily upvote, downvote, and neutral-vote graphs appear on the existing instance
+and community overview pages. The graphs use `VOTE_WINDOW_DAYS` and the
 configured timezone, matching the user Cast and Received graphs.
 
 The data meaning should match each existing overview:

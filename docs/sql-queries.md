@@ -52,10 +52,12 @@ Raw request values are not interpolated into SQL text.
 | `USER_RECEIVED_ITEMS_SQL` | Paginate unfiltered content that received votes | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL` | Paginate community-filtered content that received votes | Aggregate, content, and community tables |
 | `USER_COMMUNITY_SUMMARY_SQL` | Group a user's cast and received activity by community | Vote, aggregate, content, and community tables |
+| `COMMUNITY_VOTE_GRAPH_SQL` | Group recent votes in one community by local calendar day | Vote, post, and community tables |
 | `COMMUNITY_OVERVIEW_SQL` | Summarize recent voters in one community | Vote, post, and person tables |
 | `ITEM_BY_AP_ID_SQL` | Resolve an ActivityPub post or comment URL | Post, comment, and community tables |
 | `INSTANCE_LOOKUP_SQL` | Resolve an instance domain | `instance` |
 | Overview timeout statement | Set the transaction-local overview timeout | PostgreSQL configuration |
+| `INSTANCE_VOTE_GRAPH_SQL` | Group recent votes cast by an instance's users by local calendar day | Vote, person, and instance tables |
 | `INSTANCE_OVERVIEW_SQL` | Summarize recent voters from one instance | Vote and person tables |
 | `POST_ITEM_SQL` | Load post metadata for an item-voter page | `post`, `community` |
 | `COMMENT_ITEM_SQL` | Load comment and parent-post metadata | `comment`, `post`, `community` |
@@ -365,6 +367,25 @@ candidate community activity before applying `LIMIT/OFFSET`.
 
 ## Community overview
 
+### `COMMUNITY_VOTE_GRAPH_SQL`
+
+**Caller:** `/graph/community`
+
+**Purpose:** Return daily upvote, downvote, and neutral-vote totals for one
+public, active community, including zero-vote days.
+
+**Parameters:** Community ID, configured timezone, and `VOTE_WINDOW_DAYS`.
+
+The community overview page loads this query asynchronously. Rendered graph
+fragments are cached for `OVERVIEW_VOTE_GRAPH_CACHE_SECONDS`, and concurrent
+cache misses are coalesced. The query uses the transaction-local overview
+statement timeout, so a slow graph returns an error fragment without replacing
+the complete community page.
+
+The query joins both vote tables directly to `post`; `comment_like.post_id`
+avoids an unnecessary join through `comment`. It validates that the requested
+community remains public and active before generating the day series.
+
 ### `COMMUNITY_OVERVIEW_SQL`
 
 **Caller:** `/community/<handle>`
@@ -387,6 +408,11 @@ positions for the requested page.
 4. Calculates the page-independent summary.
 5. Assigns deterministic row numbers using the requested sort.
 6. Returns summary columns alongside the requested voter page.
+
+The post-vote side materializes the configured recent window before joining to
+the community's posts. This prevents a badly underestimated large community
+from triggering thousands of historical per-post vote lookups. The comment
+side can use the recent-published index directly.
 
 Available sorts are total, downvotes, downvote percentage, upvotes, recent, and
 username. Downvote-percentage ranking requires at least ten votes; lower-volume
@@ -440,6 +466,21 @@ SELECT set_config('statement_timeout', %s, true)
 Sets the statement timeout only for the current transaction. The supplied value
 is the validated `INSTANCE_QUERY_TIMEOUT_SECONDS` plus the `s` unit. It does not
 alter the role or database globally.
+
+### `INSTANCE_VOTE_GRAPH_SQL`
+
+**Caller:** `/graph/instance`
+
+**Purpose:** Return daily upvote, downvote, and neutral-vote totals cast by
+known, non-deleted users belonging to one instance, including zero-vote days.
+
+**Parameters:** Instance ID, configured timezone, and `VOTE_WINDOW_DAYS`.
+
+The instance overview page loads this query asynchronously through the shared
+overview graph cache. Concurrent misses are coalesced, and the query uses the
+transaction-local overview timeout. It intentionally matches
+`INSTANCE_OVERVIEW_SQL` by counting locally stored votes without filtering on
+community visibility.
 
 ### `INSTANCE_OVERVIEW_SQL`
 

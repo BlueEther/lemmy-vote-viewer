@@ -688,18 +688,103 @@ ORDER BY {order_by}
 LIMIT %s OFFSET %s
 """
 
+COMMUNITY_VOTE_GRAPH_SQL = """
+WITH requested AS (
+    SELECT
+        %s::integer AS community_id,
+        %s::text AS timezone_name,
+        %s::integer AS window_days
+),
+filters AS (
+    SELECT r.*
+    FROM requested r
+    JOIN community c ON c.id = r.community_id
+    WHERE c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+),
+bounds AS (
+    SELECT
+        f.*,
+        (CURRENT_TIMESTAMP AT TIME ZONE f.timezone_name)::date AS end_day,
+        (CURRENT_TIMESTAMP AT TIME ZONE f.timezone_name)::date
+            - (f.window_days - 1) AS start_day
+    FROM filters f
+),
+days AS (
+    SELECT generate_series(
+        b.start_day,
+        b.end_day,
+        INTERVAL '1 day'
+    )::date AS day
+    FROM bounds b
+),
+votes AS (
+    SELECT
+        (
+            pl.published AT TIME ZONE (
+                SELECT timezone_name FROM bounds
+            )
+        )::date AS day,
+        pl.score
+    FROM post_like pl
+    JOIN post p ON p.id = pl.post_id
+    WHERE p.community_id = (SELECT community_id FROM bounds)
+      AND pl.published >= (
+          SELECT start_day AT TIME ZONE timezone_name FROM bounds
+      )
+      AND pl.published < (
+          SELECT (end_day + 1) AT TIME ZONE timezone_name FROM bounds
+      )
+
+    UNION ALL
+
+    SELECT
+        (
+            cl.published AT TIME ZONE (
+                SELECT timezone_name FROM bounds
+            )
+        )::date AS day,
+        cl.score
+    FROM comment_like cl
+    JOIN post p ON p.id = cl.post_id
+    WHERE p.community_id = (SELECT community_id FROM bounds)
+      AND cl.published >= (
+          SELECT start_day AT TIME ZONE timezone_name FROM bounds
+      )
+      AND cl.published < (
+          SELECT (end_day + 1) AT TIME ZONE timezone_name FROM bounds
+      )
+)
+SELECT
+    d.day,
+    COUNT(v.score)::integer AS total,
+    COUNT(*) FILTER (WHERE v.score > 0)::integer AS up,
+    COUNT(*) FILTER (WHERE v.score < 0)::integer AS down,
+    COUNT(*) FILTER (WHERE v.score = 0)::integer AS neutral
+FROM days d
+LEFT JOIN votes v ON v.day = d.day
+GROUP BY d.day
+ORDER BY d.day
+"""
+
+
 COMMUNITY_OVERVIEW_SQL = """
 WITH target_community AS MATERIALIZED (
     SELECT
         %s::integer AS id,
         %s::boolean AS content_counts_enabled
 ),
-source_votes AS (
-    SELECT pl.person_id, pl.score, pl.published AS voted_at
+recent_post_votes AS MATERIALIZED (
+    SELECT pl.person_id, pl.post_id, pl.score, pl.published
     FROM post_like pl
-    JOIN post p ON p.id = pl.post_id
+    WHERE pl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
+),
+source_votes AS (
+    SELECT rpv.person_id, rpv.score, rpv.published AS voted_at
+    FROM recent_post_votes rpv
+    JOIN post p ON p.id = rpv.post_id
     WHERE p.community_id = (SELECT id FROM target_community)
-      AND pl.published >= CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days'
 
     UNION ALL
 
@@ -839,6 +924,87 @@ FROM instance
 WHERE domain = %s
 LIMIT 1
 """
+
+
+INSTANCE_VOTE_GRAPH_SQL = """
+WITH requested AS (
+    SELECT
+        %s::integer AS instance_id,
+        %s::text AS timezone_name,
+        %s::integer AS window_days
+),
+filters AS (
+    SELECT r.*
+    FROM requested r
+    JOIN instance i ON i.id = r.instance_id
+),
+bounds AS (
+    SELECT
+        f.*,
+        (CURRENT_TIMESTAMP AT TIME ZONE f.timezone_name)::date AS end_day,
+        (CURRENT_TIMESTAMP AT TIME ZONE f.timezone_name)::date
+            - (f.window_days - 1) AS start_day
+    FROM filters f
+),
+days AS (
+    SELECT generate_series(
+        b.start_day,
+        b.end_day,
+        INTERVAL '1 day'
+    )::date AS day
+    FROM bounds b
+),
+votes AS (
+    SELECT
+        (
+            pl.published AT TIME ZONE (
+                SELECT timezone_name FROM bounds
+            )
+        )::date AS day,
+        pl.score
+    FROM post_like pl
+    JOIN person pe ON pe.id = pl.person_id
+    WHERE pe.instance_id = (SELECT instance_id FROM bounds)
+      AND pe.deleted = false
+      AND pl.published >= (
+          SELECT start_day AT TIME ZONE timezone_name FROM bounds
+      )
+      AND pl.published < (
+          SELECT (end_day + 1) AT TIME ZONE timezone_name FROM bounds
+      )
+
+    UNION ALL
+
+    SELECT
+        (
+            cl.published AT TIME ZONE (
+                SELECT timezone_name FROM bounds
+            )
+        )::date AS day,
+        cl.score
+    FROM comment_like cl
+    JOIN person pe ON pe.id = cl.person_id
+    WHERE pe.instance_id = (SELECT instance_id FROM bounds)
+      AND pe.deleted = false
+      AND cl.published >= (
+          SELECT start_day AT TIME ZONE timezone_name FROM bounds
+      )
+      AND cl.published < (
+          SELECT (end_day + 1) AT TIME ZONE timezone_name FROM bounds
+      )
+)
+SELECT
+    d.day,
+    COUNT(v.score)::integer AS total,
+    COUNT(*) FILTER (WHERE v.score > 0)::integer AS up,
+    COUNT(*) FILTER (WHERE v.score < 0)::integer AS down,
+    COUNT(*) FILTER (WHERE v.score = 0)::integer AS neutral
+FROM days d
+LEFT JOIN votes v ON v.day = d.day
+GROUP BY d.day
+ORDER BY d.day
+"""
+
 
 INSTANCE_OVERVIEW_SQL = """
 WITH target_instance AS MATERIALIZED (
