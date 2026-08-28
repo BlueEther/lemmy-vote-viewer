@@ -1124,6 +1124,191 @@ LEFT JOIN authored_comment_counts acc ON acc.creator_id = pu.id
 ORDER BY pu.sort_position
 """
 
+USERS_OVERVIEW_SQL = """
+WITH bounds AS MATERIALIZED (
+    SELECT CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days' AS start_at
+),
+cast_source AS (
+    SELECT
+        pl.person_id,
+        pl.score,
+        pl.published AS voted_at,
+        'post'::text AS kind
+    FROM post_like pl
+    CROSS JOIN bounds b
+    WHERE pl.published >= b.start_at
+
+    UNION ALL
+
+    SELECT
+        cl.person_id,
+        cl.score,
+        cl.published AS voted_at,
+        'comment'::text AS kind
+    FROM comment_like cl
+    CROSS JOIN bounds b
+    WHERE cl.published >= b.start_at
+),
+cast_totals AS MATERIALIZED (
+    SELECT
+        person_id,
+        COUNT(*)::bigint AS cast_total,
+        COUNT(*) FILTER (WHERE score > 0)::bigint AS cast_up,
+        COUNT(*) FILTER (WHERE score < 0)::bigint AS cast_down,
+        COUNT(*) FILTER (WHERE score = 0)::bigint AS cast_neutral,
+        COUNT(*) FILTER (WHERE kind = 'post')::bigint AS cast_posts,
+        COUNT(*) FILTER (WHERE kind = 'comment')::bigint AS cast_comments,
+        MAX(voted_at) AS latest_vote
+    FROM cast_source
+    GROUP BY person_id
+),
+received_posts AS MATERIALIZED (
+    SELECT
+        p.creator_id AS person_id,
+        COUNT(*) FILTER (WHERE pl.score <> 0)::bigint AS received_posts,
+        COUNT(*) FILTER (WHERE pl.score > 0)::bigint AS received_up,
+        COUNT(*) FILTER (WHERE pl.score < 0)::bigint AS received_down,
+        MAX(pl.published) FILTER (WHERE pl.score <> 0) AS latest_received_vote
+    FROM post_like pl
+    JOIN post p ON p.id = pl.post_id
+    JOIN community c ON c.id = p.community_id
+    CROSS JOIN bounds b
+    WHERE pl.published >= b.start_at
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+    GROUP BY p.creator_id
+),
+received_comments AS MATERIALIZED (
+    SELECT
+        cm.creator_id AS person_id,
+        COUNT(*) FILTER (WHERE cl.score <> 0)::bigint AS received_comments,
+        COUNT(*) FILTER (WHERE cl.score > 0)::bigint AS received_up,
+        COUNT(*) FILTER (WHERE cl.score < 0)::bigint AS received_down,
+        MAX(cl.published) FILTER (WHERE cl.score <> 0) AS latest_received_vote
+    FROM comment_like cl
+    JOIN comment cm ON cm.id = cl.comment_id
+    JOIN post p ON p.id = cl.post_id
+    JOIN community c ON c.id = p.community_id
+    CROSS JOIN bounds b
+    WHERE cl.published >= b.start_at
+      AND c.visibility = 'Public'
+      AND c.deleted = false
+      AND c.removed = false
+    GROUP BY cm.creator_id
+),
+received_totals AS MATERIALIZED (
+    SELECT
+        COALESCE(rp.person_id, rc.person_id) AS person_id,
+        COALESCE(rp.received_posts, 0)::bigint AS received_posts,
+        COALESCE(rc.received_comments, 0)::bigint AS received_comments,
+        COALESCE(rp.received_posts, 0)::bigint
+          + COALESCE(rc.received_comments, 0)::bigint AS received_total,
+        COALESCE(rp.received_up, 0)::bigint
+          + COALESCE(rc.received_up, 0)::bigint AS received_up,
+        COALESCE(rp.received_down, 0)::bigint
+          + COALESCE(rc.received_down, 0)::bigint AS received_down,
+        GREATEST(rp.latest_received_vote, rc.latest_received_vote)
+          AS latest_received_vote
+    FROM received_posts rp
+    FULL OUTER JOIN received_comments rc ON rc.person_id = rp.person_id
+),
+active_users AS MATERIALIZED (
+    SELECT
+        pe.id,
+        pe.name,
+        pe.display_name,
+        pe.local,
+        pe.actor_id,
+        i.domain AS instance_domain,
+        COALESCE(ct.cast_total, 0)::bigint AS cast_total,
+        COALESCE(ct.cast_up, 0)::bigint AS cast_up,
+        COALESCE(ct.cast_down, 0)::bigint AS cast_down,
+        COALESCE(ct.cast_neutral, 0)::bigint AS cast_neutral,
+        COALESCE(ct.cast_posts, 0)::bigint AS cast_posts,
+        COALESCE(ct.cast_comments, 0)::bigint AS cast_comments,
+        ct.latest_vote,
+        COALESCE(rt.received_posts, 0)::bigint AS received_posts,
+        COALESCE(rt.received_comments, 0)::bigint AS received_comments,
+        COALESCE(rt.received_total, 0)::bigint AS received_total,
+        COALESCE(rt.received_up, 0)::bigint AS received_up,
+        COALESCE(rt.received_down, 0)::bigint AS received_down,
+        rt.latest_received_vote
+    FROM cast_totals ct
+    FULL OUTER JOIN received_totals rt ON rt.person_id = ct.person_id
+    JOIN person pe ON pe.id = COALESCE(ct.person_id, rt.person_id)
+    JOIN instance i ON i.id = pe.instance_id
+    WHERE pe.deleted = false
+)
+SELECT
+    au.id,
+    au.name,
+    au.display_name,
+    au.local,
+    au.actor_id,
+    au.instance_domain,
+    au.cast_total,
+    au.cast_up,
+    au.cast_down,
+    au.cast_neutral,
+    au.cast_posts,
+    au.cast_comments,
+    EXTRACT(EPOCH FROM au.latest_vote)::double precision
+      AS latest_vote_epoch,
+    au.received_posts,
+    au.received_comments,
+    au.received_total,
+    au.received_up,
+    au.received_down,
+    EXTRACT(EPOCH FROM au.latest_received_vote)::double precision
+      AS latest_received_vote_epoch
+FROM active_users au
+ORDER BY au.id
+"""
+
+USERS_OVERVIEW_CONTENT_SQL = """
+WITH bounds AS MATERIALIZED (
+    SELECT CURRENT_TIMESTAMP - INTERVAL '{vote_window_days} days' AS start_at
+),
+authored_post_counts AS MATERIALIZED (
+    SELECT pa.creator_id, COUNT(*)::bigint AS post_count
+    FROM post_aggregates pa
+    CROSS JOIN bounds b
+    WHERE pa.published >= b.start_at
+    GROUP BY pa.creator_id
+),
+recent_authored_comments AS MATERIALIZED (
+    SELECT cm.creator_id
+    FROM comment_aggregates ca
+    JOIN comment cm ON cm.id = ca.comment_id
+    CROSS JOIN bounds b
+    WHERE ca.published >= b.start_at
+),
+authored_comment_counts AS MATERIALIZED (
+    SELECT rac.creator_id, COUNT(*)::bigint AS comment_count
+    FROM recent_authored_comments rac
+    GROUP BY rac.creator_id
+)
+SELECT
+    COALESCE(apc.creator_id, acc.creator_id) AS id,
+    COALESCE(apc.post_count, 0)::bigint AS post_count,
+    COALESCE(acc.comment_count, 0)::bigint AS comment_count
+FROM authored_post_counts apc
+FULL OUTER JOIN authored_comment_counts acc
+  ON acc.creator_id = apc.creator_id
+ORDER BY COALESCE(apc.creator_id, acc.creator_id)
+"""
+
+USERS_OVERVIEW_SORTS = (
+    "total",
+    "down",
+    "down_ratio",
+    "up",
+    "recent",
+    "username",
+)
+USERS_OVERVIEW_VIEWS = ("all", "cast", "received")
+
 INSTANCE_SORTS = {
     "total": "vt.total DESC, lower(pe.name), pe.id",
     "down": "vt.down DESC, vt.total DESC, lower(pe.name), pe.id",

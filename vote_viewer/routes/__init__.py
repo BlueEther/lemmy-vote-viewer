@@ -6,7 +6,9 @@ def register_blueprints(app):
     from .items import blueprint as items_blueprint
     from .overviews import blueprint as overviews_blueprint
     from .search import blueprint as search_blueprint
+    from .users import blueprint as users_blueprint
 
     app.register_blueprint(search_blueprint)
     app.register_blueprint(overviews_blueprint)
     app.register_blueprint(items_blueprint)
+    app.register_blueprint(users_blueprint)

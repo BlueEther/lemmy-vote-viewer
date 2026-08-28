@@ -41,6 +41,7 @@ comments, and review recent voting activity by instance or community.
   `community@instance`; the older leading `!` remains optional
 - Sort cast histories by date and received histories by date or score
 - Review optional instance-level summaries and recent per-user vote totals
+- Browse an optional cached overview of recent users across all known instances
 - Follow links to local profiles, content, vote histories, and remote originals
 - Paginate large result sets with a configurable page size
 - Restrict user histories and item voter lists to public, active communities
@@ -87,6 +88,16 @@ These totals may include votes associated with communities that are not
 otherwise visible in this viewer. The linked per-user histories remain
 restricted to public, active communities, so their counts may differ from the
 instance overview.
+
+The optional global users overview applies the same recent-vote window across
+all known instances. It loads asynchronously and caches a shared snapshot
+because its received-vote and content totals require heavier database work.
+The snapshot makes subsequent sorting and pagination fast. Cast totals
+include locally recorded votes without a community-visibility filter; received
+totals include only content in public, active communities. The overview can be
+ordered by combined, cast, or received vote metrics while keeping both vote
+lines visible. Authorized users can use the page's refresh link, or request
+`/users/?cache_refresh=1`, to invalidate the shared snapshot immediately.
 
 ## Roadmap
 
@@ -247,6 +258,10 @@ cp .env.example .env
 - `ENABLE_INSTANCE_VOTE_GRAPHS` accepts `true` or `false` and defaults to
   `false`. Enable it to load a daily graph of votes cast by known instance
   users asynchronously on instance overview pages.
+- `ENABLE_USERS_OVERVIEW` accepts `true` or `false` and defaults to `false`.
+  Enable it to expose the asynchronous `/users/` overview. Access follows
+  `AUTH_INSTANCE_REQUIRE` because the page aggregates activity across all
+  known instances.
 - `USER_VOTE_GRAPH_CACHE_SECONDS` controls the shared user-graph cache and
   defaults to 300 seconds. Graphs load after the main page so their heavier
   queries do not delay the rest of the user history. The cache is held in the
@@ -257,15 +272,20 @@ cp .env.example .env
   graph cache and defaults to 1800 seconds. Its entries are also held in the
   container's `/tmp` tmpfs and cleared when the container is recreated. A
   value of `0` disables result reuse while retaining request coalescing.
-- `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance and community
-  overview queries, the community-activity aggregation on item-voter pages,
-  and received-vote graphs. It defaults to 12 seconds and is constrained to
-  5–12 seconds so it remains below the Gunicorn worker timeout.
+- `USERS_OVERVIEW_CACHE_SECONDS` controls the shared `/users/` snapshot cache
+  and defaults to 1800 seconds. Its entries are held in the container's `/tmp`
+  tmpfs and cleared when the container is recreated. A value of `0` disables
+  result reuse while retaining request coalescing.
+- `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance, community,
+  and global user overview statements, the community-activity aggregation on
+  item-voter pages, and received-vote graphs. It defaults to 12 seconds and is
+  constrained to 5–12 seconds so each statement remains below the Gunicorn
+  worker timeout.
 - `VOTE_WINDOW_DAYS` controls how many days of locally recorded votes
-  are included in instance and community overview totals and item-voter
-  community activity, and the number of days shown in user, community, and
-  instance vote graphs. It defaults to 30 and is constrained to 1–365 days.
-  Larger windows make these queries more expensive.
+  are included in instance, community, and global user overview totals and
+  item-voter community activity, and the number of days shown in user,
+  community, and instance vote graphs. It defaults to 30 and is constrained
+  to 1–365 days. Larger windows make these queries more expensive.
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
 - `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
   It is used to identify and link to the instance in the viewer UI.

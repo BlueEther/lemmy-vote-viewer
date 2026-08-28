@@ -1,0 +1,81 @@
+<section class="users-overview" aria-busy="false">
+  <nav class="filters users-overview-view-filter" aria-label="Vote totals used for sorting">
+    <div class="filter-group">
+      <span class="filter-label">Order by</span>
+      <a class="filter-button {{ 'active' if view == 'all' else '' }}" href="{{ view_urls.all }}">All</a>
+      <a class="filter-button {{ 'active' if view == 'cast' else '' }}" href="{{ view_urls.cast }}">Cast</a>
+      <a class="filter-button {{ 'active' if view == 'received' else '' }}" href="{{ view_urls.received }}">Received</a>
+    </div>
+  </nav>
+
+  <nav class="filters" aria-label="Sort users">
+    <div class="filter-group">
+      <span class="filter-label">Sort {{ view }}</span>
+      <a class="filter-button {{ 'active' if sort == 'total' else '' }}" href="{{ sort_urls.total }}">Most votes</a>
+      <a class="filter-button {{ 'active' if sort == 'down' else '' }}" href="{{ sort_urls.down }}">Most downvotes</a>
+      <a class="filter-button {{ 'active' if sort == 'down_ratio' else '' }}" href="{{ sort_urls.down_ratio }}">Downvote %</a>
+      <a class="filter-button {{ 'active' if sort == 'up' else '' }}" href="{{ sort_urls.up }}">Most upvotes</a>
+      <a class="filter-button {{ 'active' if sort == 'recent' else '' }}" href="{{ sort_urls.recent }}">Most recent</a>
+      <a class="filter-button {{ 'active' if sort == 'username' else '' }}" href="{{ sort_urls.username }}">Username</a>
+    </div>
+  </nav>
+
+  {% if sort == 'down_ratio' %}
+    <p class="muted">Downvote percentage sorting requires at least 10 cast votes within the last {{ vote_window_days }} days; lower-activity users follow.</p>
+  {% endif %}
+
+  {% if rows %}
+    <div class="users-overview-list">
+      {% for row in rows %}
+        <article class="users-overview-row">
+          <div class="users-overview-identity">
+            <div class="users-overview-name-line">
+              <a class="users-overview-name" href="{{ row.vote_path }}">{{ row.display_name or row.name }}</a>
+              <a class="profile-link" title="Open local Lemmy profile" href="{{ row.profile_path }}">👤</a>
+              {% if row.remote_url %}
+                <a class="remote" title="Open profile on its original instance" href="{{ row.remote_url }}" target="_blank" rel="noopener noreferrer">🌐</a>
+              {% endif %}
+            </div>
+            <div class="users-overview-content muted">Total Posts: {{ row.post_count }} Comments: {{ row.comment_count }}</div>
+            {% if row.instance_path %}
+              <a class="users-overview-handle muted" href="{{ row.instance_path }}">@{{ row.handle }}</a>
+            {% else %}
+              <span class="users-overview-handle muted">@{{ row.handle }}</span>
+            {% endif %}
+          </div>
+
+          <div class="users-overview-votes">
+            <div class="users-overview-vote-row {{ 'has-neutral' if row.cast_neutral else '' }}" data-users-vote-kind="cast">
+              <strong>Votes cast</strong>
+              <span><b>{{ row.cast_total }}</b> total</span>
+              <b class="up">{{ row.cast_up }} ↑</b>
+              <b class="down">{{ row.cast_down }} ↓</b>
+              {% if row.cast_neutral %}<b class="neutral">{{ row.cast_neutral }} •</b>{% endif %}
+              <span><b>{{ row.cast_posts }}</b> on posts</span>
+              <span><b>{{ row.cast_comments }}</b> on comments</span>
+            </div>
+            <div class="users-overview-vote-row {{ 'has-neutral' if row.cast_neutral else '' }}" data-users-vote-kind="received">
+              <strong>Votes received</strong>
+              <span><b>{{ row.received_total }}</b> total</span>
+              <b class="up">{{ row.received_up }} ↑</b>
+              <b class="down">{{ row.received_down }} ↓</b>
+              {% if row.cast_neutral %}<span></span>{% endif %}
+              <span><b>{{ row.received_posts }}</b> on posts</span>
+              <span><b>{{ row.received_comments }}</b> on comments</span>
+            </div>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+
+    {% if pagination.page_count > 1 %}
+      <nav class="pagination" aria-label="Pagination">
+        {% if pagination.has_prev %}<a class="filter-button" href="{{ pagination.prev_url }}">← Previous</a>{% else %}<span></span>{% endif %}
+        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }}</span>
+        {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <p class="notice">No users cast votes within the last {{ vote_window_days }} days.</p>
+  {% endif %}
+</section>

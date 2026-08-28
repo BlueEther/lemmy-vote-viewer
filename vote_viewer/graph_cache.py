@@ -9,12 +9,11 @@ from contextlib import contextmanager
 class GraphCache:
     """Small cross-worker cache and lease for expensive graph fragments."""
 
-    MAX_ENTRIES = 512
-
-    def __init__(self, path, ttl_seconds, lease_seconds):
+    def __init__(self, path, ttl_seconds, lease_seconds, max_entries=512):
         self.path = str(path)
         self.ttl_seconds = ttl_seconds
         self.lease_seconds = lease_seconds
+        self.max_entries = max_entries
         self._initialize()
 
     @contextmanager
@@ -136,7 +135,7 @@ class GraphCache:
                             LIMIT -1 OFFSET ?
                         )
                         """,
-                        (self.MAX_ENTRIES,),
+                            (self.max_entries,),
                     )
                 self._release(connection, cache_key)
         except sqlite3.Error:

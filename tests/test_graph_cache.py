@@ -37,3 +37,16 @@ class GraphCacheTests(unittest.TestCase):
         self.assertEqual(self.cache.claim("first"), ("claimed", None))
         self.cache.release("first")
         self.assertEqual(self.cache.claim("second"), ("claimed", None))
+
+    def test_configured_entry_limit_is_enforced(self):
+        limited_cache = GraphCache(
+            Path(self.temporary_directory.name) / "limited.sqlite3",
+            ttl_seconds=300,
+            lease_seconds=15,
+            max_entries=1,
+        )
+        self.assertEqual(limited_cache.claim("first"), ("claimed", None))
+        limited_cache.store("first", "one")
+        self.assertEqual(limited_cache.claim("second"), ("claimed", None))
+        limited_cache.store("second", "two")
+        self.assertEqual(limited_cache.claim("first"), ("claimed", None))

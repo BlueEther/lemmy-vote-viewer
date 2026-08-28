@@ -21,6 +21,9 @@
           <input name="user" value="{{ username }}" aria-label="Username" placeholder="username or username@instance" maxlength="512" autocomplete="off" {% if not item_query and not instance_query and not community_overview_query %}autofocus{% endif %}>
           <button type="submit">Search</button>
         </form>
+        {% if users_overview_enabled %}
+          <p><a href="{{ app_prefix }}/users/">Browse all recent users →</a></p>
+        {% endif %}
       </section>
 
       <section class="search-panel">

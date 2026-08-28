@@ -188,6 +188,38 @@ def build_community_overview_url(handle, sort="total", page=1, app_prefix=""):
         params["page"] = str(page)
     return f"{path}?{urlencode(params)}" if params else path
 
+
+def build_users_url(
+    sort="total",
+    page=1,
+    app_prefix="",
+    view="all",
+    cache_refresh=False,
+):
+    path = f"{app_prefix}/users/"
+    params = {}
+    if view != "all":
+        params["view"] = view
+    if sort != "total":
+        params["sort"] = sort
+    if page > 1:
+        params["page"] = str(page)
+    if cache_refresh:
+        params["cache_refresh"] = "1"
+    return f"{path}?{urlencode(params)}" if params else path
+
+
+def build_users_data_url(sort="total", page=1, app_prefix="", view="all"):
+    path = f"{app_prefix}/users/data"
+    params = {}
+    if view != "all":
+        params["view"] = view
+    if sort != "total":
+        params["sort"] = sort
+    if page > 1:
+        params["page"] = str(page)
+    return f"{path}?{urlencode(params)}" if params else path
+
 def vote_history_path(handle, app_prefix=""):
     return (
         build_index_url(handle, "all", None, 1, app_prefix=app_prefix)

@@ -59,6 +59,8 @@ Raw request values are not interpolated into SQL text.
 | Overview timeout statement | Set the transaction-local overview timeout | PostgreSQL configuration |
 | `INSTANCE_VOTE_GRAPH_SQL` | Group recent votes cast by an instance's users by local calendar day | Vote, person, and instance tables |
 | `INSTANCE_OVERVIEW_SQL` | Summarize recent voters from one instance | Vote and person tables |
+| `USERS_OVERVIEW_SQL` | Rank and paginate recent voters across all known instances | Vote, person, and instance tables |
+| `USERS_OVERVIEW_CONTENT_SQL` | Count recent posts and comments authored by one displayed page of users | Aggregate and content tables |
 | `POST_ITEM_SQL` | Load post metadata for an item-voter page | `post`, `community` |
 | `COMMENT_ITEM_SQL` | Load comment and parent-post metadata | `comment`, `post`, `community` |
 | `POST_VOTERS_SQL` | Paginate voters on one post | `post_like`, `person` |
@@ -440,6 +442,34 @@ forms for the comment branch.
 
 The query does not require the post or comment itself to remain active; later
 item queries retain the row and redact deleted or removed content.
+
+## Global users overview
+
+### `USERS_OVERVIEW_SQL` and `USERS_OVERVIEW_CONTENT_SQL`
+
+**Caller:** Asynchronous `/users/data` fragment loaded by `/users/`
+
+**Purpose:** Rank users with locally recorded votes during the configured
+window and populate one page of user-level cast, received, and authored-content
+totals.
+
+**Parameters:** None. Both statements use the configured vote-window value
+embedded only after integer validation.
+
+**Generated values:** Validated `VOTE_WINDOW_DAYS`.
+
+The first query aggregates cast and received totals for all recently active
+users. The follow-up statement calculates recent authored-content totals. The
+complete snapshot is cached, then grouping, sorting, and pagination are applied
+in the application without another database query. Received totals include
+content in public, active communities; cast totals intentionally match instance
+overview semantics by counting locally stored votes without a
+community-visibility filter.
+
+The route uses the transaction-local overview timeout. Rendered pages are
+cached across workers for `USERS_OVERVIEW_CACHE_SECONDS`, and concurrent cache
+misses are coalesced. The outer `/users/` page loads without waiting for this
+query.
 
 ## Instance overview
 

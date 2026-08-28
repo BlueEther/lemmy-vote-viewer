@@ -23,8 +23,10 @@ class AppConfig:
     enable_user_vote_graphs: bool
     enable_community_vote_graphs: bool
     enable_instance_vote_graphs: bool
+    enable_users_overview: bool
     user_vote_graph_cache_seconds: int
     overview_vote_graph_cache_seconds: int
+    users_overview_cache_seconds: int
     app_prefix: str
     page_size: int
     instance_query_timeout_seconds: int
@@ -136,6 +138,9 @@ def load_config(environ=None, project_root=None):
     enable_instance_vote_graphs = boolean_env(
         environ, "ENABLE_INSTANCE_VOTE_GRAPHS", False
     )
+    enable_users_overview = boolean_env(
+        environ, "ENABLE_USERS_OVERVIEW", False
+    )
     user_vote_graph_cache_seconds = bounded_int_env(
         environ,
         "USER_VOTE_GRAPH_CACHE_SECONDS",
@@ -146,6 +151,13 @@ def load_config(environ=None, project_root=None):
     overview_vote_graph_cache_seconds = bounded_int_env(
         environ,
         "OVERVIEW_VOTE_GRAPH_CACHE_SECONDS",
+        1800,
+        0,
+        86400,
+    )
+    users_overview_cache_seconds = bounded_int_env(
+        environ,
+        "USERS_OVERVIEW_CACHE_SECONDS",
         1800,
         0,
         86400,
@@ -245,8 +257,10 @@ def load_config(environ=None, project_root=None):
         enable_user_vote_graphs=enable_user_vote_graphs,
         enable_community_vote_graphs=enable_community_vote_graphs,
         enable_instance_vote_graphs=enable_instance_vote_graphs,
+        enable_users_overview=enable_users_overview,
         user_vote_graph_cache_seconds=user_vote_graph_cache_seconds,
         overview_vote_graph_cache_seconds=overview_vote_graph_cache_seconds,
+        users_overview_cache_seconds=users_overview_cache_seconds,
         app_prefix=app_prefix,
         page_size=page_size,
         instance_query_timeout_seconds=instance_query_timeout_seconds,
