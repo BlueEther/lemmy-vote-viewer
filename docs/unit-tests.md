@@ -173,11 +173,16 @@ post and comment counts appear between the display name and handle.
 
 ### `test_user_vote_graphs_use_window_filters_and_can_be_disabled`
 
-Renders user Cast and Received views with graphs enabled and verifies their
-query selection, configured window, active filters, heavier received-query
-timeout, daily labels, and stacked vote classes. It also verifies that
-disabling graphs skips the additional query and removes the graph from the
-page.
+Verifies that user Cast and Received pages render asynchronous graph
+placeholders without executing graph SQL during the page request. It then
+calls the graph endpoint, checks query selection, filters, configured window,
+received-query timeout, daily labels, and stacked vote classes. Disabling the
+feature removes the placeholder.
+
+### `GraphCacheTests`
+
+Exercises the shared SQLite cache's global miss lease, request coalescing,
+stored-fragment retrieval, and explicit lease release.
 
 ### `test_logged_in_user_can_search_but_cannot_see_instance_search`
 

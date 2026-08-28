@@ -238,6 +238,12 @@ then groups upvotes, downvotes, neutral states, and totals by calendar day in
 the configured display timezone. It reports current locally stored vote state,
 not a permanent history of votes later removed or changed.
 
+The main history page does not execute this query directly. It loads the graph
+from the dedicated user-graph endpoint after rendering. Rendered graph
+fragments are cached for `USER_VOTE_GRAPH_CACHE_SECONDS`; concurrent misses
+are coalesced so only one graph calculation runs at a time across both
+Gunicorn workers.
+
 ### `USER_RECEIVED_VOTE_GRAPH_SQL`
 
 **Caller:** User Received view when `ENABLE_USER_VOTE_GRAPHS=true`
@@ -255,6 +261,9 @@ require many indexed lookups, so this query uses the configured heavier-query
 timeout and can be disabled with `ENABLE_USER_VOTE_GRAPHS=false`. These daily
 counts come from current vote rows and may differ from aggregate received-vote
 totals.
+
+As with the Cast graph, this query runs through the asynchronous user-graph
+endpoint and shared cache rather than delaying the main history page.
 
 ## Votes received by a user
 

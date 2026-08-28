@@ -153,6 +153,10 @@ button { cursor: pointer; }
   background: #171a20;
 }
 
+.vote-graph-loading {
+  min-height: 82px;
+}
+
 .vote-graph-heading {
   display: flex;
   align-items: flex-start;

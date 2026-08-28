@@ -28,6 +28,7 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config.enable_instance_content_counts)
         self.assertTrue(config.enable_community_content_counts)
         self.assertTrue(config.enable_user_vote_graphs)
+        self.assertEqual(config.user_vote_graph_cache_seconds, 300)
         self.assertEqual(config.auth_provider, "none")
         self.assertEqual(config.auth_search_require, "none")
         self.assertEqual(config.auth_instance_require, "none")
@@ -57,6 +58,7 @@ class ConfigTests(unittest.TestCase):
             ENABLE_INSTANCE_CONTENT_COUNTS="false",
             ENABLE_COMMUNITY_CONTENT_COUNTS="FALSE",
             ENABLE_USER_VOTE_GRAPHS="false",
+            USER_VOTE_GRAPH_CACHE_SECONDS="9999",
         )
 
         self.assertEqual(config.app_prefix, "/viewer")
@@ -67,6 +69,7 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.enable_instance_content_counts)
         self.assertFalse(config.enable_community_content_counts)
         self.assertFalse(config.enable_user_vote_graphs)
+        self.assertEqual(config.user_vote_graph_cache_seconds, 3600)
         self.assertEqual(
             config.auth_allowed_users, frozenset({"dave", "blueether"})
         )

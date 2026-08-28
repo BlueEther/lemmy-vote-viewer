@@ -35,6 +35,7 @@ from vote_viewer.routes import search as search_routes
 
 
 AUTH_MANAGER = viewer.app.extensions["vote_viewer_auth"]
+GRAPH_CACHE = viewer.app.extensions["vote_viewer_graph_cache"]
 
 
 class FakeResponse:
@@ -97,6 +98,7 @@ def lemmy_user_payload(username="Alice", admin=False, banned=False, deleted=Fals
 class VoteViewerTests(unittest.TestCase):
     def setUp(self):
         AUTH_MANAGER.cache.clear()
+        GRAPH_CACHE.clear()
         self.client = viewer.app.test_client()
 
     def request_as(self, payload, path="/"):
@@ -798,7 +800,7 @@ class VoteViewerTests(unittest.TestCase):
             },
         ]
         enabled = replace(viewer.CONFIG, enable_user_vote_graphs=True)
-        database = ScriptedDatabase([cast, received, graph_rows, []])
+        database = ScriptedDatabase([cast, received, []])
 
         with (
             patch.dict(
@@ -815,17 +817,38 @@ class VoteViewerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Votes cast by day", response.data)
-        self.assertIn(b"2026-08-28: 5 total, 4 up, 1 down", response.data)
-        self.assertIn(b'class="graph-up"', response.data)
-        self.assertEqual(database.queries[2][0], queries.USER_VOTE_GRAPH_SQL)
+        self.assertIn(b'data-vote-graph-url=', response.data)
+        self.assertNotIn(b'class="graph-up"', response.data)
+        self.assertEqual(len(database.queries), 3)
+
+        graph_database = ScriptedDatabase([graph_rows])
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(search_routes, "db", return_value=graph_database),
+        ):
+            graph_response = self.request_as(
+                lemmy_user_payload(),
+                "/graph/user?user_id=42"
+                "&type=comment&score=-1",
+            )
+
+        self.assertEqual(graph_response.status_code, 200)
+        self.assertEqual(graph_response.headers["X-Vote-Graph-Cache"], "miss")
+        self.assertIn(
+            b"2026-08-28: 5 total, 4 up, 1 down",
+            graph_response.data,
+        )
+        self.assertIn(b'class="graph-up"', graph_response.data)
+        self.assertEqual(graph_database.queries[0][0], queries.USER_VOTE_GRAPH_SQL)
         self.assertEqual(
-            database.queries[2][1],
+            graph_database.queries[0][1],
             (42, "comment", -1, None, "UTC", 30),
         )
 
-        received_database = ScriptedDatabase(
-            [cast, received, None, graph_rows, []]
-        )
+        received_database = ScriptedDatabase([None, graph_rows])
         with (
             patch.dict(
                 viewer.app.config,
@@ -836,22 +859,22 @@ class VoteViewerTests(unittest.TestCase):
                 "db",
                 return_value=received_database,
             ),
-            patch.object(search_routes, "resolve_user", return_value=user),
         ):
             received_response = self.request_as(
                 lemmy_user_payload(),
-                "/?user=blueether%40no.lastname.nz&view=received&type=comment",
+                "/graph/user?user_id=42"
+                "&view=received&type=comment",
             )
         self.assertIn(b"Votes received by day", received_response.data)
         self.assertEqual(
-            received_database.queries[2],
+            received_database.queries[0],
             (
                 "SELECT set_config('statement_timeout', %s, true)",
                 ("12s",),
             ),
         )
         self.assertEqual(
-            received_database.queries[3],
+            received_database.queries[1],
             (
                 queries.USER_RECEIVED_VOTE_GRAPH_SQL,
                 (42, "comment", None, "UTC", 30),

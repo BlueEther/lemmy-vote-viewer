@@ -369,6 +369,13 @@ community-activity aggregation, and reducing `VOTE_WINDOW_DAYS` may
 reduce its cost. The window does not affect ordinary user-history queries.
 Identify the exact route and SQL before changing settings.
 
+User vote graphs load separately from the main history page. A cold graph may
+take several seconds, but repeated requests should return from the shared
+cache. Inspect the `X-Vote-Graph-Cache` response header on `/graph/user`:
+`miss` means the request calculated and cached the graph, `hit` means it reused
+the cached fragment, and `busy` means another graph calculation is already in
+progress. `USER_VOTE_GRAPH_CACHE_SECONDS=0` disables result reuse.
+
 ## Generic HTTP 500 errors
 
 The browser intentionally receives a generic message. Inspect the corresponding

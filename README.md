@@ -199,6 +199,7 @@ ENABLE_DOMAIN_SEARCH=false
 ENABLE_INSTANCE_CONTENT_COUNTS=true
 ENABLE_COMMUNITY_CONTENT_COUNTS=true
 ENABLE_USER_VOTE_GRAPHS=true
+USER_VOTE_GRAPH_CACHE_SECONDS=300
 INSTANCE_QUERY_TIMEOUT_SECONDS=12
 VOTE_WINDOW_DAYS=30
 LEMMY_NETWORK=lemmy-easy-deploy_default
@@ -237,6 +238,12 @@ cp .env.example .env
 - `ENABLE_USER_VOTE_GRAPHS` accepts `true` or `false` and defaults to `true`.
   Set it to `false` to hide the daily graphs on user Cast and Received views
   and skip their additional queries.
+- `USER_VOTE_GRAPH_CACHE_SECONDS` controls the shared user-graph cache and
+  defaults to 300 seconds. Graphs load after the main page so their heavier
+  queries do not delay the rest of the user history. The cache is held in the
+  container's `/tmp` tmpfs, shared by both Gunicorn workers, and cleared when
+  the container is recreated. A value of `0` disables result reuse while
+  retaining request coalescing.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance and community
   overview queries, the community-activity aggregation on item-voter pages,
   and received-vote graphs. It defaults to 12 seconds and is constrained to
