@@ -16,7 +16,7 @@ community handle. The proposed list views would help an authorized operator
 discover where locally recorded voting activity is coming from and where it is
 occurring.
 
-Both views would use the configured `INSTANCE_VOTE_WINDOW_DAYS`, which defaults
+Both views would use the configured `VOTE_WINDOW_DAYS`, which defaults
 to 30 days. Counts would describe votes stored by the local Lemmy instance, not
 complete activity from the wider federation.
 

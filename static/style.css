@@ -145,6 +145,82 @@ button { cursor: pointer; }
   text-align: right;
 }
 
+.vote-graph {
+  margin: 22px 0 4px;
+  padding: 18px;
+  border: 1px solid #2a2e37;
+  border-radius: 10px;
+  background: #171a20;
+}
+
+.vote-graph-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vote-graph-heading h3,
+.vote-graph-heading p { margin: 0; }
+
+.vote-graph-heading p {
+  margin-top: 4px;
+  font-size: .9rem;
+}
+
+.vote-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 14px;
+  color: #cbd0db;
+  font-size: .85rem;
+}
+
+.vote-graph-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vote-graph-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.vote-graph-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 10px;
+  overflow: visible;
+}
+
+.graph-up { fill: #65d48a; background: #65d48a; }
+.graph-down { fill: #ef6b73; background: #ef6b73; }
+.graph-neutral { fill: #8b94a7; background: #8b94a7; }
+.graph-grid { stroke: #303642; stroke-width: 1; }
+.graph-axis { stroke: #687083; stroke-width: 1; }
+
+.graph-scale,
+.graph-date {
+  fill: #9ca3b3;
+  font-size: 13px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -661,6 +737,9 @@ blockquote {
     margin-top: 14px;
     text-align: left;
   }
+
+  .vote-graph-heading { flex-direction: column; }
+  .vote-graph-legend { justify-content: flex-start; }
 
   .search { flex-direction: column; }
   .search input { max-width: none; }

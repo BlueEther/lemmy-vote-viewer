@@ -4,7 +4,7 @@ The unit test suite is in [`tests/test_app.py`](../tests/test_app.py),
 [`tests/test_auth.py`](../tests/test_auth.py),
 [`tests/test_config.py`](../tests/test_config.py), and
 [`tests/test_database.py`](../tests/test_database.py). It uses Python's
-standard-library `unittest` framework and currently contains 56 tests.
+standard-library `unittest` framework and currently contains 57 tests.
 
 The suite covers authentication, authorization, disabled-feature handling,
 community-handle parsing, URL construction, SQL-query selection, link
@@ -170,6 +170,13 @@ when community content counts are off.
 
 Renders the main user-search summary and verifies that the user's total known
 post and comment counts appear between the display name and handle.
+
+### `test_user_cast_graph_uses_window_filters_and_can_be_disabled`
+
+Renders a user Cast view with graphs enabled and verifies the configured
+window, content type, score, and timezone query parameters, daily graph labels,
+and stacked vote classes. It also verifies that disabling graphs skips the
+additional query and removes the graph from the page.
 
 ### `test_logged_in_user_can_search_but_cannot_see_instance_search`
 

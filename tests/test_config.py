@@ -22,11 +22,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.app_prefix, "/votes")
         self.assertEqual(config.page_size, 100)
         self.assertEqual(config.instance_query_timeout_seconds, 12)
-        self.assertEqual(config.instance_vote_window_days, 30)
+        self.assertEqual(config.vote_window_days, 30)
         self.assertEqual(config.timezone_name, "UTC")
         self.assertFalse(config.enable_domain_search)
         self.assertTrue(config.enable_instance_content_counts)
         self.assertTrue(config.enable_community_content_counts)
+        self.assertTrue(config.enable_user_vote_graphs)
         self.assertEqual(config.auth_provider, "none")
         self.assertEqual(config.auth_search_require, "none")
         self.assertEqual(config.auth_instance_require, "none")
@@ -42,7 +43,7 @@ class ConfigTests(unittest.TestCase):
             APP_PREFIX="//viewer//",
             PAGE_SIZE="999",
             INSTANCE_QUERY_TIMEOUT_SECONDS="1",
-            INSTANCE_VOTE_WINDOW_DAYS="invalid",
+            VOTE_WINDOW_DAYS="invalid",
             AUTH_PROVIDER="lemmy",
             AUTH_SEARCH_REQUIRE="allowlist",
             AUTH_INSTANCE_REQUIRE="admin",
@@ -55,15 +56,17 @@ class ConfigTests(unittest.TestCase):
             ENABLE_DOMAIN_SEARCH="TRUE",
             ENABLE_INSTANCE_CONTENT_COUNTS="false",
             ENABLE_COMMUNITY_CONTENT_COUNTS="FALSE",
+            ENABLE_USER_VOTE_GRAPHS="false",
         )
 
         self.assertEqual(config.app_prefix, "/viewer")
         self.assertEqual(config.page_size, 250)
         self.assertEqual(config.instance_query_timeout_seconds, 5)
-        self.assertEqual(config.instance_vote_window_days, 30)
+        self.assertEqual(config.vote_window_days, 30)
         self.assertTrue(config.enable_domain_search)
         self.assertFalse(config.enable_instance_content_counts)
         self.assertFalse(config.enable_community_content_counts)
+        self.assertFalse(config.enable_user_vote_graphs)
         self.assertEqual(
             config.auth_allowed_users, frozenset({"dave", "blueether"})
         )
@@ -94,6 +97,10 @@ class ConfigTests(unittest.TestCase):
             ),
             (
                 {"ENABLE_COMMUNITY_CONTENT_COUNTS": "yes"},
+                "must be either true or false",
+            ),
+            (
+                {"ENABLE_USER_VOTE_GRAPHS": "yes"},
                 "must be either true or false",
             ),
             ({"TIMEZONE": "Not/A_Timezone"}, "Invalid TIMEZONE"),

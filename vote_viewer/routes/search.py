@@ -15,12 +15,14 @@ from ..queries import (
     USER_RECEIVED_ITEMS_SQL,
     USER_RECEIVED_SUMMARY_SQL,
     USER_SUMMARY_SQL,
+    USER_VOTE_GRAPH_SQL,
     USER_VOTES_BY_COMMUNITY_SQL,
     USER_VOTES_OLDEST_BY_COMMUNITY_SQL,
     USER_VOTES_OLDEST_SQL,
     USER_VOTES_SQL,
 )
 from ..services import (
+    build_vote_graph,
     enrich_community_summary,
     enrich_item,
     enrich_user_vote,
@@ -160,6 +162,7 @@ def index():
     community_error = None
     community = None
     user_suggestions = []
+    vote_graph = None
 
     if username:
         with db() as conn:
@@ -208,6 +211,23 @@ def index():
                         ),
                     )
                     received_summary = cur.fetchone()
+
+                    if (
+                        settings.enable_user_vote_graphs
+                        and history_view == "cast"
+                    ):
+                        cur.execute(
+                            USER_VOTE_GRAPH_SQL,
+                            (
+                                user["id"],
+                                content_type,
+                                score_filter,
+                                community_id,
+                                settings.timezone_name,
+                                settings.vote_window_days,
+                            ),
+                        )
+                        vote_graph = build_vote_graph(cur.fetchall())
 
                     if history_view == "cast":
                         pagination = make_pagination(
@@ -473,4 +493,6 @@ def index():
         community=community,
         community_error=community_error,
         community_clear_url=community_clear_url,
+        vote_graph=vote_graph,
+        vote_graph_window_days=settings.vote_window_days,
     )

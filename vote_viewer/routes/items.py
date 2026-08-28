@@ -82,16 +82,16 @@ def item_votes(kind, item_id):
                     voter_ids,
                     voter_ids,
                     item["community_id"],
-                    settings.instance_vote_window_days,
+                    settings.vote_window_days,
                     voter_ids,
                     item["community_id"],
-                    settings.instance_vote_window_days,
+                    settings.vote_window_days,
                     voter_ids,
                     item["community_id"],
-                    settings.instance_vote_window_days,
+                    settings.vote_window_days,
                     voter_ids,
                     item["community_id"],
-                    settings.instance_vote_window_days,
+                    settings.vote_window_days,
                 )
                 cur.execute(
                     ITEM_VOTER_ACTIVITY_SQL,
@@ -133,7 +133,7 @@ def item_votes(kind, item_id):
         community_content_counts_enabled=(
             settings.enable_community_content_counts
         ),
-        vote_window_days=settings.instance_vote_window_days,
+        vote_window_days=settings.vote_window_days,
         sort_urls=sort_urls,
     )
 

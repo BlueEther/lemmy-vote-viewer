@@ -20,6 +20,84 @@ from .links import (
 from .queries import COMMUNITY_LOOKUP_SQL, ITEM_BY_AP_ID_SQL, USER_SUGGESTIONS_SQL
 
 
+def build_vote_graph(rows, width=960, height=180):
+    rows = [dict(row) for row in rows]
+    if not rows:
+        return None
+
+    maximum = max((row["total"] for row in rows), default=0)
+    if maximum == 0:
+        return {"points": [], "rows": rows, "maximum": 0}
+
+    plot_left = 54
+    plot_right = 18
+    plot_top = 18
+    baseline = height - 50
+    plot_width = width - plot_left - plot_right
+    plot_height = baseline - plot_top
+    step = plot_width / len(rows)
+    bar_width = max(1, min(22, step * 0.68))
+    points = []
+
+    for index, row in enumerate(rows):
+        x = plot_left + index * step + (step - bar_width) / 2
+        y = baseline
+        segments = []
+        for key, css_class in (
+            ("down", "graph-down"),
+            ("neutral", "graph-neutral"),
+            ("up", "graph-up"),
+        ):
+            segment_height = row[key] / maximum * plot_height
+            y -= segment_height
+            segments.append(
+                {
+                    "class": css_class,
+                    "y": round(y, 2),
+                    "height": round(segment_height, 2),
+                }
+            )
+        points.append(
+            {
+                "x": round(x, 2),
+                "width": round(bar_width, 2),
+                "segments": segments,
+                "label": row["day"].isoformat(),
+                "up": row["up"],
+                "down": row["down"],
+                "neutral": row["neutral"],
+                "total": row["total"],
+            }
+        )
+
+    label_indexes = sorted({0, len(rows) // 2, len(rows) - 1})
+    labels = [
+        {
+            "x": round(plot_left + index * step + step / 2, 2),
+            "label": rows[index]["day"].strftime("%b %d").replace(" 0", " "),
+        }
+        for index in label_indexes
+    ]
+    midpoint = (maximum + 1) // 2
+    return {
+        "points": points,
+        "rows": rows,
+        "maximum": maximum,
+        "midpoint": midpoint,
+        "midpoint_y": round(
+            baseline - midpoint / maximum * plot_height,
+            2,
+        ),
+        "baseline": baseline,
+        "plot_left": plot_left,
+        "plot_right": width - plot_right,
+        "width": width,
+        "height": height,
+        "label_y": height - 22,
+        "labels": labels,
+    }
+
+
 def resolve_community(cur, value):
     parsed = parse_community_handle(value)
     if not parsed:

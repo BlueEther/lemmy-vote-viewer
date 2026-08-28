@@ -46,6 +46,7 @@ Raw request values are not interpolated into SQL text.
 | `USER_VOTES_SQL` / `USER_VOTES_OLDEST_SQL` | Paginate unfiltered votes cast by a user | Vote, content, community, and person tables |
 | `USER_VOTES_BY_COMMUNITY_SQL` / `USER_VOTES_OLDEST_BY_COMMUNITY_SQL` | Paginate community-filtered votes cast by a user | Vote, content, community, and person tables |
 | `USER_SUMMARY_SQL` | Count votes cast and filtered results | Vote, post, and community tables |
+| `USER_VOTE_GRAPH_SQL` | Group a user's filtered recent votes cast by local calendar day | Vote, post, and community tables |
 | `USER_RECEIVED_SUMMARY_SQL` | Summarize votes received by a user's content | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_SQL` | Paginate unfiltered content that received votes | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL` | Paginate community-filtered content that received votes | Aggregate, content, and community tables |
@@ -219,6 +220,22 @@ and optional community-filter values.
 
 The overall summary remains unfiltered while `filtered_total` drives the
 current history page count.
+
+### `USER_VOTE_GRAPH_SQL`
+
+**Caller:** User Cast view when `ENABLE_USER_VOTE_GRAPHS=true`
+
+**Purpose:** Produce one row per local calendar day for the configured recent
+window, including zero-vote days, for the user vote graph.
+
+**Parameters:** User ID, content type, optional score, optional community ID,
+configured timezone, and `VOTE_WINDOW_DAYS`.
+
+The query combines current post and comment vote records, applies the same
+public-community, content-type, score, and community filters as the Cast view,
+then groups upvotes, downvotes, neutral states, and totals by calendar day in
+the configured display timezone. It reports current locally stored vote state,
+not a permanent history of votes later removed or changed.
 
 ## Votes received by a user
 
