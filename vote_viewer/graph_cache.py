@@ -28,34 +28,40 @@ class GraphCache:
             connection.close()
 
     def _initialize(self):
-        with self._connect() as connection:
-            connection.execute("PRAGMA journal_mode = WAL")
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS graph_cache (
-                    cache_key TEXT PRIMARY KEY,
-                    payload TEXT NOT NULL,
-                    expires_at REAL NOT NULL,
-                    created_at REAL NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS graph_cache_state (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    lease_key TEXT,
-                    lease_until REAL NOT NULL DEFAULT 0
-                )
-                """
-            )
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO graph_cache_state (
-                    id, lease_key, lease_until
-                ) VALUES (1, NULL, 0)
-                """
-            )
+        for attempt in range(5):
+            try:
+                with self._connect() as connection:
+                    connection.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS graph_cache (
+                            cache_key TEXT PRIMARY KEY,
+                            payload TEXT NOT NULL,
+                            expires_at REAL NOT NULL,
+                            created_at REAL NOT NULL
+                        )
+                        """
+                    )
+                    connection.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS graph_cache_state (
+                            id INTEGER PRIMARY KEY CHECK (id = 1),
+                            lease_key TEXT,
+                            lease_until REAL NOT NULL DEFAULT 0
+                        )
+                        """
+                    )
+                    connection.execute(
+                        """
+                        INSERT OR IGNORE INTO graph_cache_state (
+                            id, lease_key, lease_until
+                        ) VALUES (1, NULL, 0)
+                        """
+                    )
+                return
+            except sqlite3.OperationalError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.1)
 
     def claim(self, cache_key):
         """Return (status, payload); status is hit, claimed, or busy."""
