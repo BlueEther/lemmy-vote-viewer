@@ -1,13 +1,15 @@
 # Future expansion ideas
 
-This document records two related ideas for expanding the existing instance and
+This document records related ideas for expanding the existing instance and
 community overview features:
 
-1. a paginated list of known instances with recent vote totals; and
-2. a paginated list of known communities with recent vote totals.
+1. a paginated list of known instances with recent vote totals;
+2. a paginated list of known communities with recent vote totals;
+3. a time-based voting graph on an instance overview; and
+4. a time-based voting graph on a community overview.
 
 These are design notes, not committed roadmap items. Query prototypes should be
-benchmarked against copied production data before either view is implemented.
+benchmarked against copied production data before any view is implemented.
 
 ## Shared purpose
 
@@ -208,6 +210,108 @@ one to two days. If it follows the instance list, shared sorting, pagination,
 authorization, styles, and tests should reduce the additional work to roughly
 three to six hours, excluding unexpected query optimization.
 
+## Instance and community voting graphs
+
+### Proposed behavior
+
+Add daily upvote, downvote, and neutral-vote graphs to the existing instance
+and community overview pages. The graphs would use `VOTE_WINDOW_DAYS` and the
+configured timezone, matching the user Cast and Received graphs.
+
+The data meaning should match each existing overview:
+
+- an instance graph shows votes cast by known users whose `person.instance_id`
+  is the selected instance; and
+- a community graph shows votes recorded locally on posts and comments in the
+  selected public community.
+
+These graphs would describe only votes stored by the local Lemmy database. They
+would not represent complete activity on a remote instance or community.
+
+### Loading and caching
+
+Both graphs should load asynchronously after the overview page renders. A slow
+or failed graph query must not prevent the existing overview table from being
+used.
+
+Use the same cache-miss coalescing pattern as the user graphs so concurrent
+requests do not start duplicate expensive queries. Instance and community
+graphs are shared between visitors and change slowly relative to their 30-day
+window, so a 30-minute default cache is appropriate:
+
+```text
+OVERVIEW_VOTE_GRAPH_CACHE_SECONDS=1800
+```
+
+Keep this separate from `USER_VOTE_GRAPH_CACHE_SECONDS`, which can retain its
+shorter default. Cache keys must include:
+
+- graph type (`instance` or `community`);
+- instance or community ID;
+- `VOTE_WINDOW_DAYS`; and
+- configured timezone.
+
+Cache entries may continue to live in the application's `/tmp` cache and may be
+discarded when the container is recreated. A production implementation should
+retain the existing statement timeout and return a graph-specific error
+fragment rather than replacing the complete page with HTTP 503.
+
+Use independent feature flags so operators can disable either cost separately:
+
+```text
+ENABLE_INSTANCE_VOTE_GRAPHS=true
+ENABLE_COMMUNITY_VOTE_GRAPHS=true
+```
+
+### Expected SQL cost
+
+Generating the daily buckets is inexpensive. Selecting all qualifying recent
+votes is the dominant cost and largely repeats work already performed by the
+overview query. Running the graph as a separate asynchronous query therefore
+protects page rendering, but an uncached visit can approximately double the
+overview's vote-scanning work.
+
+Initial 30-day graph-shaped queries on the copied test database measured:
+
+| Target | Matching votes | Warm execution time | Shared buffers touched | Storage read |
+| --- | ---: | ---: | ---: | ---: |
+| `technology@lemmy.world` | about 397,000 | 0.85 seconds | about 12 GB | about 300 MB |
+| `lemmy.world` users | about 826,000 | 0.71 seconds | about 15 GB | about 370 MB |
+
+These results used parallel PostgreSQL plans and benefited from cached data.
+Cold storage, production concurrency, different PostgreSQL settings, or a less
+favorable plan can make wall-clock time several times higher. The large buffer
+counts show that the queries remain substantial despite their short warm
+timings.
+
+Use `technology@lemmy.world` as an initial high-volume community test and
+`lemmy.world` as the instance stress test. Benchmark cold, semi-cold, warm, and
+concurrent cache-miss behavior before enabling the graphs by default.
+
+### Existing instance-page constraint
+
+The copied test database currently returns the `lemmy.world` instance overview
+in about 1.56 seconds when `ENABLE_INSTANCE_CONTENT_COUNTS=false`. With content
+counts enabled, the query repeatedly exceeds the 12-second statement timeout.
+The expensive portion counts recent posts and comments authored by the 100
+users on the current page; the available Lemmy indexes do not provide a
+combined creator-and-published lookup for those paths.
+
+That existing timeout should be optimized independently before adding an
+instance graph. The graph must not be blamed for, or hide, a timeout already
+caused by instance content counts.
+
+### Possible later rollup
+
+If uncached graphs create noticeable production load despite the 30-minute
+cache, maintain application-owned daily rollups instead of repeatedly scanning
+Lemmy's live vote tables. Keep rollup tables outside Lemmy's schema so Lemmy
+upgrades do not need to manage or preserve application-specific objects.
+
+Do not introduce rollups initially. First implement and benchmark the simpler
+asynchronous cached queries, because shared overview graphs should have a much
+higher cache-hit rate than user-specific graphs.
+
 ## Relative SQL cost
 
 The copied test database used during this design discussion contained
@@ -301,5 +405,7 @@ days, including tests and realistic query validation.
 - Are `/instances` and `/communities` the preferred route names?
 - Which sort should be the default?
 - Is short-lived caching acceptable if uncached queries exceed the timeout?
+- Should instance and community graphs use the proposed 30-minute cache?
+- Should the graph feature flags default to enabled or disabled?
 - Should these views continue sharing `ENABLE_DOMAIN_SEARCH`, or should a more
   accurately named feature flag replace it in a later configuration change?
