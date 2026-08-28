@@ -5,6 +5,7 @@ import json
 import os
 import psycopg
 import unittest
+from datetime import date
 from dataclasses import replace
 from unittest.mock import patch
 from urllib.error import URLError
@@ -20,6 +21,7 @@ os.environ["AUTH_INSTANCE_REQUIRE"] = "admin"
 os.environ["AUTH_ALLOWED_USERS"] = "Dave,BlueEther"
 os.environ["AUTH_CACHE_SECONDS"] = "60"
 os.environ["ENABLE_DOMAIN_SEARCH"] = "true"
+os.environ["ENABLE_USER_VOTE_GRAPHS"] = "false"
 
 import app as compatibility_entrypoint
 import vote_viewer as viewer
@@ -33,6 +35,7 @@ from vote_viewer.routes import search as search_routes
 
 
 AUTH_MANAGER = viewer.app.extensions["vote_viewer_auth"]
+GRAPH_CACHE = viewer.app.extensions["vote_viewer_graph_cache"]
 
 
 class FakeResponse:
@@ -95,6 +98,7 @@ def lemmy_user_payload(username="Alice", admin=False, banned=False, deleted=Fals
 class VoteViewerTests(unittest.TestCase):
     def setUp(self):
         AUTH_MANAGER.cache.clear()
+        GRAPH_CACHE.clear()
         self.client = viewer.app.test_client()
 
     def request_as(self, payload, path="/"):
@@ -412,16 +416,16 @@ class VoteViewerTests(unittest.TestCase):
                                 [7],
                                 [7],
                                 99,
-                                viewer.CONFIG.instance_vote_window_days,
+                                viewer.CONFIG.vote_window_days,
                                 [7],
                                 99,
-                                viewer.CONFIG.instance_vote_window_days,
+                                viewer.CONFIG.vote_window_days,
                                 [7],
                                 99,
-                                viewer.CONFIG.instance_vote_window_days,
+                                viewer.CONFIG.vote_window_days,
                                 [7],
                                 99,
-                                viewer.CONFIG.instance_vote_window_days,
+                                viewer.CONFIG.vote_window_days,
                             ),
                         ),
                     ],
@@ -433,7 +437,7 @@ class VoteViewerTests(unittest.TestCase):
                 self.assertTrue(context["community_content_counts_enabled"])
                 self.assertEqual(
                     context["vote_window_days"],
-                    viewer.CONFIG.instance_vote_window_days,
+                    viewer.CONFIG.vote_window_days,
                 )
                 self.assertEqual(context["rows"][0]["community_post_count"], 12)
                 self.assertIn(
@@ -577,7 +581,7 @@ class VoteViewerTests(unittest.TestCase):
                 (
                     queries.INSTANCE_OVERVIEW_SQL.format(
                         order_by=queries.INSTANCE_SORTS["down"],
-                        vote_window_days=viewer.CONFIG.instance_vote_window_days,
+                        vote_window_days=viewer.CONFIG.vote_window_days,
                     ),
                     (
                         9,
@@ -682,7 +686,7 @@ class VoteViewerTests(unittest.TestCase):
                 (
                     queries.COMMUNITY_OVERVIEW_SQL.format(
                         order_by=queries.COMMUNITY_OVERVIEW_SORTS["recent"],
-                        vote_window_days=viewer.CONFIG.instance_vote_window_days,
+                        vote_window_days=viewer.CONFIG.vote_window_days,
                     ),
                     (
                         77,
@@ -765,6 +769,133 @@ class VoteViewerTests(unittest.TestCase):
         )
         self.assertLess(name_position, counts_position)
         self.assertLess(counts_position, handle_position)
+
+    def test_user_vote_graphs_use_window_filters_and_can_be_disabled(self):
+        user = {
+            "id": 42,
+            "display_name": "BlueEther",
+            "name": "blueether",
+            "local": False,
+            "actor_id": "https://no.lastname.nz/u/blueether",
+            "profile_path": "/u/blueether@no.lastname.nz",
+            "handle": "blueether@no.lastname.nz",
+            "post_count": 12,
+            "comment_count": 34,
+        }
+        cast, received = self.user_summaries(filtered_total=0)
+        graph_rows = [
+            {
+                "day": date(2026, 8, 27),
+                "total": 3,
+                "up": 2,
+                "down": 1,
+                "neutral": 0,
+            },
+            {
+                "day": date(2026, 8, 28),
+                "total": 5,
+                "up": 4,
+                "down": 1,
+                "neutral": 0,
+            },
+        ]
+        enabled = replace(viewer.CONFIG, enable_user_vote_graphs=True)
+        database = ScriptedDatabase([cast, received, []])
+
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(search_routes, "db", return_value=database),
+            patch.object(search_routes, "resolve_user", return_value=user),
+        ):
+            response = self.request_as(
+                lemmy_user_payload(),
+                "/?user=blueether%40no.lastname.nz&type=comment&score=-1",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Votes cast by day", response.data)
+        self.assertIn(b'data-vote-graph-url=', response.data)
+        self.assertNotIn(b'class="graph-up"', response.data)
+        self.assertEqual(len(database.queries), 3)
+
+        graph_database = ScriptedDatabase([graph_rows])
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(search_routes, "db", return_value=graph_database),
+        ):
+            graph_response = self.request_as(
+                lemmy_user_payload(),
+                "/graph/user?user_id=42"
+                "&type=comment&score=-1",
+            )
+
+        self.assertEqual(graph_response.status_code, 200)
+        self.assertEqual(graph_response.headers["X-Vote-Graph-Cache"], "miss")
+        self.assertIn(
+            b"2026-08-28: 5 total, 4 up, 1 down",
+            graph_response.data,
+        )
+        self.assertIn(b'class="graph-up"', graph_response.data)
+        self.assertEqual(graph_database.queries[0][0], queries.USER_VOTE_GRAPH_SQL)
+        self.assertEqual(
+            graph_database.queries[0][1],
+            (42, "comment", -1, None, "UTC", 30),
+        )
+
+        received_database = ScriptedDatabase([None, graph_rows])
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(
+                search_routes,
+                "db",
+                return_value=received_database,
+            ),
+        ):
+            received_response = self.request_as(
+                lemmy_user_payload(),
+                "/graph/user?user_id=42"
+                "&view=received&type=comment",
+            )
+        self.assertIn(b"Votes received by day", received_response.data)
+        self.assertEqual(
+            received_database.queries[0],
+            (
+                "SELECT set_config('statement_timeout', %s, true)",
+                ("12s",),
+            ),
+        )
+        self.assertEqual(
+            received_database.queries[1],
+            (
+                queries.USER_RECEIVED_VOTE_GRAPH_SQL,
+                (42, "comment", None, "UTC", 30),
+            ),
+        )
+
+        disabled_database = ScriptedDatabase([cast, received, []])
+        with (
+            patch.object(
+                search_routes,
+                "db",
+                return_value=disabled_database,
+            ),
+            patch.object(search_routes, "resolve_user", return_value=user),
+        ):
+            disabled_response = self.request_as(
+                lemmy_user_payload(),
+                "/?user=blueether%40no.lastname.nz",
+            )
+        self.assertNotIn(b"Votes cast by day", disabled_response.data)
+        self.assertEqual(len(disabled_database.queries), 3)
 
     def test_logged_in_user_can_search_but_cannot_see_instance_search(self):
         response = self.request_as(lemmy_user_payload())

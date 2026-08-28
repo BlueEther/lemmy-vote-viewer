@@ -9,6 +9,7 @@ import psycopg
 
 from .auth import AuthenticationUnavailable, AuthManager
 from .config import load_config
+from .graph_cache import GraphCache
 from .routes import register_blueprints
 
 
@@ -22,6 +23,11 @@ app = Flask(
 )
 app.config["VOTE_VIEWER_CONFIG"] = CONFIG
 app.extensions["vote_viewer_auth"] = AuthManager(CONFIG)
+app.extensions["vote_viewer_graph_cache"] = GraphCache(
+    "/tmp/lemmy-vote-viewer-graphs.sqlite3",
+    CONFIG.user_vote_graph_cache_seconds,
+    CONFIG.instance_query_timeout_seconds + 3,
+)
 
 FEDERATION_HAIKU = (
     "Beyond this node's reach",
@@ -55,8 +61,8 @@ def security_headers(response):
         "style-src 'self'; "
         "img-src 'self' data:; "
         "font-src 'self'; "
-        "script-src 'none'; "
-        "connect-src 'none'; "
+        "script-src 'self'; "
+        "connect-src 'self'; "
         "object-src 'none'; "
         "base-uri 'none'; "
         "frame-ancestors 'none'; "

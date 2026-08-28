@@ -56,7 +56,7 @@ def instance_overview(domain):
             requested_offset = (requested_page - 1) * settings.page_size
             overview_sql = INSTANCE_OVERVIEW_SQL.format(
                 order_by=INSTANCE_SORTS[sort],
-                vote_window_days=settings.instance_vote_window_days,
+                vote_window_days=settings.vote_window_days,
             )
             cur.execute(
                 "SELECT set_config('statement_timeout', %s, true)",
@@ -114,7 +114,7 @@ def instance_overview(domain):
         sort=sort,
         sort_urls=sort_urls,
         pagination=pagination,
-        vote_window_days=settings.instance_vote_window_days,
+        vote_window_days=settings.vote_window_days,
         content_counts_enabled=settings.enable_instance_content_counts,
     )
 
@@ -151,7 +151,7 @@ def community_overview(community_handle):
             requested_offset = (requested_page - 1) * settings.page_size
             overview_sql = COMMUNITY_OVERVIEW_SQL.format(
                 order_by=COMMUNITY_OVERVIEW_SORTS[sort],
-                vote_window_days=settings.instance_vote_window_days,
+                vote_window_days=settings.vote_window_days,
             )
             cur.execute(
                 "SELECT set_config('statement_timeout', %s, true)",
@@ -218,6 +218,6 @@ def community_overview(community_handle):
         sort=sort,
         sort_urls=sort_urls,
         pagination=pagination,
-        vote_window_days=settings.instance_vote_window_days,
+        vote_window_days=settings.vote_window_days,
         content_counts_enabled=settings.enable_community_content_counts,
     )

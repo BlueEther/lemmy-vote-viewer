@@ -20,10 +20,12 @@ class AppConfig:
     enable_domain_search: bool
     enable_instance_content_counts: bool
     enable_community_content_counts: bool
+    enable_user_vote_graphs: bool
+    user_vote_graph_cache_seconds: int
     app_prefix: str
     page_size: int
     instance_query_timeout_seconds: int
-    instance_vote_window_days: int
+    vote_window_days: int
     timezone_name: str
     display_timezone: ZoneInfo
     lemmy_base_url: str | None
@@ -122,6 +124,16 @@ def load_config(environ=None, project_root=None):
     enable_community_content_counts = boolean_env(
         environ, "ENABLE_COMMUNITY_CONTENT_COUNTS", True
     )
+    enable_user_vote_graphs = boolean_env(
+        environ, "ENABLE_USER_VOTE_GRAPHS", True
+    )
+    user_vote_graph_cache_seconds = bounded_int_env(
+        environ,
+        "USER_VOTE_GRAPH_CACHE_SECONDS",
+        300,
+        0,
+        3600,
+    )
 
     raw_prefix = environ.get("APP_PREFIX", "/votes").strip()
     app_prefix = "" if raw_prefix in ("", "/") else "/" + raw_prefix.strip("/")
@@ -134,9 +146,9 @@ def load_config(environ=None, project_root=None):
         5,
         12,
     )
-    instance_vote_window_days = bounded_int_env(
+    vote_window_days = bounded_int_env(
         environ,
-        "INSTANCE_VOTE_WINDOW_DAYS",
+        "VOTE_WINDOW_DAYS",
         30,
         1,
         365,
@@ -214,10 +226,12 @@ def load_config(environ=None, project_root=None):
         enable_domain_search=enable_domain_search,
         enable_instance_content_counts=enable_instance_content_counts,
         enable_community_content_counts=enable_community_content_counts,
+        enable_user_vote_graphs=enable_user_vote_graphs,
+        user_vote_graph_cache_seconds=user_vote_graph_cache_seconds,
         app_prefix=app_prefix,
         page_size=page_size,
         instance_query_timeout_seconds=instance_query_timeout_seconds,
-        instance_vote_window_days=instance_vote_window_days,
+        vote_window_days=vote_window_days,
         timezone_name=timezone_name,
         display_timezone=display_timezone,
         lemmy_base_url=lemmy_base_url,

@@ -46,6 +46,8 @@ Raw request values are not interpolated into SQL text.
 | `USER_VOTES_SQL` / `USER_VOTES_OLDEST_SQL` | Paginate unfiltered votes cast by a user | Vote, content, community, and person tables |
 | `USER_VOTES_BY_COMMUNITY_SQL` / `USER_VOTES_OLDEST_BY_COMMUNITY_SQL` | Paginate community-filtered votes cast by a user | Vote, content, community, and person tables |
 | `USER_SUMMARY_SQL` | Count votes cast and filtered results | Vote, post, and community tables |
+| `USER_VOTE_GRAPH_SQL` | Group a user's filtered recent votes cast by local calendar day | Vote, post, and community tables |
+| `USER_RECEIVED_VOTE_GRAPH_SQL` | Group a user's filtered recent votes received by local calendar day | Vote, content, and community tables |
 | `USER_RECEIVED_SUMMARY_SQL` | Summarize votes received by a user's content | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_SQL` | Paginate unfiltered content that received votes | Aggregate, content, and community tables |
 | `USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL` | Paginate community-filtered content that received votes | Aggregate, content, and community tables |
@@ -219,6 +221,49 @@ and optional community-filter values.
 
 The overall summary remains unfiltered while `filtered_total` drives the
 current history page count.
+
+### `USER_VOTE_GRAPH_SQL`
+
+**Caller:** User Cast view when `ENABLE_USER_VOTE_GRAPHS=true`
+
+**Purpose:** Produce one row per local calendar day for the configured recent
+window, including zero-vote days, for the user vote graph.
+
+**Parameters:** User ID, content type, optional score, optional community ID,
+configured timezone, and `VOTE_WINDOW_DAYS`.
+
+The query combines current post and comment vote records, applies the same
+public-community, content-type, score, and community filters as the Cast view,
+then groups upvotes, downvotes, neutral states, and totals by calendar day in
+the configured display timezone. It reports current locally stored vote state,
+not a permanent history of votes later removed or changed.
+
+The main history page does not execute this query directly. It loads the graph
+from the dedicated user-graph endpoint after rendering. Rendered graph
+fragments are cached for `USER_VOTE_GRAPH_CACHE_SECONDS`; concurrent misses
+are coalesced so only one graph calculation runs at a time across both
+Gunicorn workers.
+
+### `USER_RECEIVED_VOTE_GRAPH_SQL`
+
+**Caller:** User Received view when `ENABLE_USER_VOTE_GRAPHS=true`
+
+**Purpose:** Produce one row per local calendar day for current votes recorded
+on content authored by the selected user.
+
+**Parameters:** User ID, content type, optional community ID, configured
+timezone, and `VOTE_WINDOW_DAYS`.
+
+The query joins current post and comment vote rows back to content authored by
+the user, applies the Received view's content-type and community filters, and
+groups the results in the configured display timezone. Prolific authors can
+require many indexed lookups, so this query uses the configured heavier-query
+timeout and can be disabled with `ENABLE_USER_VOTE_GRAPHS=false`. These daily
+counts come from current vote rows and may differ from aggregate received-vote
+totals.
+
+As with the Cast graph, this query runs through the asynchronous user-graph
+endpoint and shared cache rather than delaying the main history page.
 
 ## Votes received by a user
 

@@ -1,7 +1,20 @@
 # Copyright (C) 2026 BlueEther@no.lastname.nz
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-from flask import Blueprint, abort, redirect, render_template, request
+import hashlib
+import json
+from urllib.parse import urlencode
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    make_response,
+    redirect,
+    render_template,
+    request,
+)
+import psycopg
 
 from ..links import (
     normalize_instance_domain,
@@ -13,14 +26,17 @@ from ..queries import (
     USER_COMMUNITY_SUMMARY_SQL,
     USER_RECEIVED_ITEMS_BY_COMMUNITY_SQL,
     USER_RECEIVED_ITEMS_SQL,
+    USER_RECEIVED_VOTE_GRAPH_SQL,
     USER_RECEIVED_SUMMARY_SQL,
     USER_SUMMARY_SQL,
+    USER_VOTE_GRAPH_SQL,
     USER_VOTES_BY_COMMUNITY_SQL,
     USER_VOTES_OLDEST_BY_COMMUNITY_SQL,
     USER_VOTES_OLDEST_SQL,
     USER_VOTES_SQL,
 )
 from ..services import (
+    build_vote_graph,
     enrich_community_summary,
     enrich_item,
     enrich_user_vote,
@@ -36,6 +52,7 @@ from ..web import (
     config,
     db,
     enforce_access,
+    graph_cache,
     make_pagination,
     parse_page,
     require_access,
@@ -44,6 +61,168 @@ from ..web import (
 
 
 blueprint = Blueprint("search", __name__)
+
+
+def build_user_graph_url(
+    user_id,
+    history_view,
+    content_type,
+    score_filter,
+    community_id,
+    app_prefix,
+):
+    params = {
+        "user_id": user_id,
+        "view": history_view,
+        "type": content_type,
+    }
+    if history_view == "cast" and score_filter is not None:
+        params["score"] = str(score_filter)
+    if community_id is not None:
+        params["community_id"] = community_id
+    return f"{app_prefix}/graph/user?{urlencode(params)}"
+
+
+def graph_response(payload, status=200, cache_status=None):
+    response = make_response(payload, status)
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    if cache_status:
+        response.headers["X-Vote-Graph-Cache"] = cache_status
+    return response
+
+
+@blueprint.route("/graph/user")
+@require_access("auth_search_require")
+def user_vote_graph():
+    settings = config()
+    if not settings.enable_user_vote_graphs:
+        abort(404)
+
+    try:
+        user_id = int(request.args.get("user_id", ""))
+    except ValueError:
+        abort(400)
+    if user_id <= 0:
+        abort(400)
+
+    history_view = request.args.get("view", "cast")
+    if history_view not in ("cast", "received"):
+        abort(400)
+
+    content_type = request.args.get("type", "all")
+    if content_type not in ("all", "post", "comment"):
+        abort(400)
+
+    raw_score = request.args.get("score", "all")
+    score_filter = (
+        1
+        if raw_score == "1"
+        else -1
+        if raw_score == "-1"
+        else 0
+        if raw_score == "0"
+        else None
+    )
+    if history_view != "cast":
+        score_filter = None
+
+    raw_community_id = request.args.get("community_id", "").strip()
+    try:
+        community_id = int(raw_community_id) if raw_community_id else None
+    except ValueError:
+        abort(400)
+    if community_id is not None and community_id <= 0:
+        abort(400)
+
+    cache_key = None
+    cache = graph_cache()
+    try:
+        with db() as conn:
+            with conn.cursor() as cur:
+                cache_key = hashlib.sha256(
+                    json.dumps(
+                        (
+                            user_id,
+                            history_view,
+                            content_type,
+                            score_filter,
+                            community_id,
+                            settings.timezone_name,
+                            settings.vote_window_days,
+                        ),
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+                cache_state, cached_payload = cache.claim(cache_key)
+                if cache_state == "hit":
+                    return graph_response(
+                        cached_payload,
+                        cache_status="hit",
+                    )
+                if cache_state == "busy":
+                    response = graph_response(
+                        "",
+                        status=202,
+                        cache_status="busy",
+                    )
+                    response.headers["Retry-After"] = "1"
+                    return response
+
+                if history_view == "cast":
+                    graph_sql = USER_VOTE_GRAPH_SQL
+                    graph_params = (
+                        user_id,
+                        content_type,
+                        score_filter,
+                        community_id,
+                        settings.timezone_name,
+                        settings.vote_window_days,
+                    )
+                    graph_title = "Votes cast by day"
+                else:
+                    cur.execute(
+                        "SELECT set_config('statement_timeout', %s, true)",
+                        (f"{settings.instance_query_timeout_seconds}s",),
+                    )
+                    graph_sql = USER_RECEIVED_VOTE_GRAPH_SQL
+                    graph_params = (
+                        user_id,
+                        content_type,
+                        community_id,
+                        settings.timezone_name,
+                        settings.vote_window_days,
+                    )
+                    graph_title = "Votes received by day"
+
+                cur.execute(graph_sql, graph_params)
+                vote_graph = build_vote_graph(cur.fetchall())
+                payload = render_template(
+                    "_vote_graph.html",
+                    vote_graph=vote_graph,
+                    vote_graph_title=graph_title,
+                    vote_graph_window_days=settings.vote_window_days,
+                )
+                cache.store(cache_key, payload)
+                return graph_response(payload, cache_status="miss")
+    except psycopg.errors.QueryCanceled:
+        if cache_key:
+            cache.release(cache_key)
+        current_app.logger.warning(
+            "User vote graph query timed out for %s",
+            user_id,
+        )
+        return graph_response(
+            render_template(
+                "_vote_graph_error.html",
+                message="The graph took too long to calculate. Try again later.",
+            ),
+            status=503,
+            cache_status="error",
+        )
+    except Exception:
+        if cache_key:
+            cache.release(cache_key)
+        raise
 
 
 @blueprint.route("/")
@@ -160,6 +339,8 @@ def index():
     community_error = None
     community = None
     user_suggestions = []
+    vote_graph_url = None
+    vote_graph_title = None
 
     if username:
         with db() as conn:
@@ -208,6 +389,24 @@ def index():
                         ),
                     )
                     received_summary = cur.fetchone()
+
+                    if settings.enable_user_vote_graphs and history_view in (
+                        "cast",
+                        "received",
+                    ):
+                        vote_graph_title = (
+                            "Votes cast by day"
+                            if history_view == "cast"
+                            else "Votes received by day"
+                        )
+                        vote_graph_url = build_user_graph_url(
+                            user["id"],
+                            history_view,
+                            content_type,
+                            score_filter,
+                            community_id,
+                            settings.app_prefix,
+                        )
 
                     if history_view == "cast":
                         pagination = make_pagination(
@@ -473,4 +672,7 @@ def index():
         community=community,
         community_error=community_error,
         community_clear_url=community_clear_url,
+        vote_graph_url=vote_graph_url,
+        vote_graph_title=vote_graph_title,
+        vote_graph_window_days=settings.vote_window_days,
     )

@@ -349,7 +349,7 @@ to 5–12 seconds so it remains below the Gunicorn worker timeout.
 
 For slow instance or community overviews:
 
-- reduce `INSTANCE_VOTE_WINDOW_DAYS`;
+- reduce `VOTE_WINDOW_DAYS`;
 - test a smaller instance or community to confirm the route works;
 - run `ANALYZE` after restoring a copied database;
 - inspect the query plan with `EXPLAIN (ANALYZE, BUFFERS, SETTINGS)` on a staging
@@ -365,9 +365,16 @@ use them. Diagnose the plan and rows processed rather than treating low total
 CPU utilization as proof that Docker is limiting the container.
 
 For slow item-voter pages, disabling `ENABLE_COMMUNITY_CONTENT_COUNTS` skips the
-community-activity aggregation, and reducing `INSTANCE_VOTE_WINDOW_DAYS` may
+community-activity aggregation, and reducing `VOTE_WINDOW_DAYS` may
 reduce its cost. The window does not affect ordinary user-history queries.
 Identify the exact route and SQL before changing settings.
+
+User vote graphs load separately from the main history page. A cold graph may
+take several seconds, but repeated requests should return from the shared
+cache. Inspect the `X-Vote-Graph-Cache` response header on `/graph/user`:
+`miss` means the request calculated and cached the graph, `hit` means it reused
+the cached fragment, and `busy` means another graph calculation is already in
+progress. `USER_VOTE_GRAPH_CACHE_SECONDS=0` disables result reuse.
 
 ## Generic HTTP 500 errors
 

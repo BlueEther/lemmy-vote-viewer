@@ -33,6 +33,8 @@ comments, and review recent voting activity by instance or community.
 - Inspect the voters recorded for individual posts and comments
 - Filter vote histories by content type and vote direction
 - Filter cast and received histories by local or known remote community
+- Graph a user's recent votes cast or received by day using the active history
+  filters
 - Compare votes cast and received across communities in a grouped summary
 - Open a community overview showing recent voters and their vote totals
 - Enter community searches and filters as `community` or
@@ -96,7 +98,6 @@ instance overview.
 
 ### Possible enhancements
 
-- Add time based voting graphs
 - Add browse-all instance and community activity lists; these may be expensive
   in both application work and SQL (see
   [future expansion ideas](docs/future-expansion-ideas.md)).
@@ -197,8 +198,10 @@ PAGE_SIZE=100
 ENABLE_DOMAIN_SEARCH=false
 ENABLE_INSTANCE_CONTENT_COUNTS=true
 ENABLE_COMMUNITY_CONTENT_COUNTS=true
+ENABLE_USER_VOTE_GRAPHS=true
+USER_VOTE_GRAPH_CACHE_SECONDS=300
 INSTANCE_QUERY_TIMEOUT_SECONDS=12
-INSTANCE_VOTE_WINDOW_DAYS=30
+VOTE_WINDOW_DAYS=30
 LEMMY_NETWORK=lemmy-easy-deploy_default
 LEMMY_BASE_URL=https://example.com
 LEMMY_INTERNAL_URL=http://lemmy:8536
@@ -232,14 +235,24 @@ cp .env.example .env
   `false` to hide post/comment totals and skip their additional database work
   on instance or community pages. Community content counts also control the
   community-scoped post, comment, and vote totals on item-voter pages.
+- `ENABLE_USER_VOTE_GRAPHS` accepts `true` or `false` and defaults to `true`.
+  Set it to `false` to hide the daily graphs on user Cast and Received views
+  and skip their additional queries.
+- `USER_VOTE_GRAPH_CACHE_SECONDS` controls the shared user-graph cache and
+  defaults to 300 seconds. Graphs load after the main page so their heavier
+  queries do not delay the rest of the user history. The cache is held in the
+  container's `/tmp` tmpfs, shared by both Gunicorn workers, and cleared when
+  the container is recreated. A value of `0` disables result reuse while
+  retaining request coalescing.
 - `INSTANCE_QUERY_TIMEOUT_SECONDS` controls the heavier instance and community
-  overview queries and the community-activity aggregation on item-voter pages.
-  It defaults to 12 seconds and is constrained to 5–12 seconds so it remains
-  below the Gunicorn worker timeout.
-- `INSTANCE_VOTE_WINDOW_DAYS` controls how many days of locally recorded votes
+  overview queries, the community-activity aggregation on item-voter pages,
+  and received-vote graphs. It defaults to 12 seconds and is constrained to
+  5–12 seconds so it remains below the Gunicorn worker timeout.
+- `VOTE_WINDOW_DAYS` controls how many days of locally recorded votes
   are included in instance and community overview totals and item-voter
-  community activity. It defaults to 30 and is constrained to 1–365 days.
-  Larger windows make these queries more expensive.
+  community activity, and the number of days shown in user vote graphs. It
+  defaults to 30 and is constrained to 1–365 days. Larger windows make these
+  queries more expensive.
 - `APP_PREFIX=/votes` is the URL path from which the pages will be served.
 - `LEMMY_BASE_URL` is the public URL of the Lemmy instance, without a path.
   It is used to identify and link to the instance in the viewer UI.
@@ -442,8 +455,8 @@ This viewer shows the current vote state stored by this Lemmy instance.
 It is not a permanent audit log of removed or changed votes.
 Remote-user data is limited to what has already federated to and is stored by this instance.
 Instance and community overview totals, plus community activity shown for
-voters on item pages, are limited to the configured recent-vote window, which
-defaults to 30 days.
+voters on item pages and user vote graphs, are limited to the configured
+recent-vote window, which defaults to 30 days.
 
 ## Local database testing (preproduction testing)
 

@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Lemmy Vote Viewer</title>
   <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+  <script src="{{ app_prefix }}/static/graph.js" defer></script>
 </head>
 <body>
 <main class="wrap">
@@ -129,6 +130,18 @@
         <div class="summary-note muted">Received totals are votes recorded locally on content in public communities.</div>
       </div>
     </section>
+
+    {% if vote_graph_url %}
+      <section class="vote-graph vote-graph-loading" data-vote-graph-url="{{ vote_graph_url }}" aria-busy="true" aria-live="polite">
+        <div class="vote-graph-heading">
+          <div>
+            <h3>{{ vote_graph_title }}</h3>
+            <p class="muted" data-graph-status>Loading graph…</p>
+          </div>
+        </div>
+        <noscript><p class="notice">JavaScript is required to load this graph.</p></noscript>
+      </section>
+    {% endif %}
 
     <nav class="filters history-filters" aria-label="Vote filters">
       <div class="filter-group">
