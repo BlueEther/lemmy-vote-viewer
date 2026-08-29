@@ -188,6 +188,10 @@ class VoteViewerTests(unittest.TestCase):
             ),
             "/votes/users/?view=received&sort=up&page=2&cache_refresh=1",
         )
+        self.assertEqual(
+            links.build_users_data_url("total", 1, "/votes", "all", 7),
+            "/votes/users/data?window=7",
+        )
 
     def request_index(self, path, results, community=None):
         database = ScriptedDatabase(results)
@@ -743,11 +747,15 @@ class VoteViewerTests(unittest.TestCase):
         self.assertIn(b"All users", response.data)
         self.assertIn(b'src="/static/users.js"', response.data)
         self.assertIn(
-            b'data-users-overview-url="/users/data?view=received&amp;sort=down&amp;page=2"',
+            b'data-users-overview-url="/users/data?view=received&amp;sort=down&amp;page=2&amp;window=30"',
             response.data,
         )
+        self.assertIn(b"1 Day", response.data)
+        self.assertIn(b"2 Days", response.data)
+        self.assertIn(b"1 Week", response.data)
+        self.assertIn(b"Full 30 Days", response.data)
         self.assertIn(
-            b'href="/users/?view=received&amp;sort=down&amp;page=2&amp;cache_refresh=1"',
+            b'href="/users/?view=received&amp;sort=down&amp;page=2&amp;cache_refresh=1&amp;window=30"',
             response.data,
         )
 
@@ -768,9 +776,31 @@ class VoteViewerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response.headers["Location"],
-            "/users/?view=received&sort=down&page=2",
+            "/users/?view=received&sort=down&page=2&window=30",
         )
         cache.return_value.clear.assert_called_once_with()
+
+    def test_users_overview_selects_configured_short_window(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": enabled},
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/?window=7",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"last 7 days", response.data)
+        self.assertIn(
+            b'data-users-overview-url="/users/data?window=7"',
+            response.data,
+        )
+        self.assertIn(
+            b'class="filter-button active" href="/users/?window=7"',
+            response.data,
+        )
 
     def test_users_overview_data_uses_timeout_pagination_and_cache(self):
         enabled = replace(viewer.CONFIG, enable_users_overview=True)
@@ -828,12 +858,14 @@ class VoteViewerTests(unittest.TestCase):
         )
         self.assertIn(b"@Malyca@lemmy.zip", first_response.data)
         self.assertIn(b"Votes received", first_response.data)
-        self.assertIn(b'href="/users/?sort=down"', first_response.data)
         self.assertIn(
-            b'href="/users/?view=cast&amp;sort=down"', first_response.data
+            b'href="/users/?sort=down&amp;window=30"', first_response.data
         )
         self.assertIn(
-            b'class="filter-button active" href="/users/?view=received&amp;sort=down"',
+            b'href="/users/?view=cast&amp;sort=down&amp;window=30"', first_response.data
+        )
+        self.assertIn(
+            b'class="filter-button active" href="/users/?view=received&amp;sort=down&amp;window=30"',
             first_response.data,
         )
         self.assertIn(b"Votes cast", first_response.data)

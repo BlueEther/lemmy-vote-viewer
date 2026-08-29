@@ -466,6 +466,10 @@ content in public, active communities; cast totals intentionally match instance
 overview semantics by counting locally stored votes without a
 community-visibility filter.
 
+The page offers one-day, two-day, one-week, and full `VOTE_WINDOW_DAYS`
+snapshots. The selected window is part of the cache key, so each window is
+calculated once and subsequent sorting within that window is local.
+
 The route uses the transaction-local overview timeout. Rendered pages are
 cached across workers for `USERS_OVERVIEW_CACHE_SECONDS`, and concurrent cache
 misses are coalesced. The outer `/users/` page loads without waiting for this
