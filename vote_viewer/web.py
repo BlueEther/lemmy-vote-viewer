@@ -109,18 +109,27 @@ def build_community_overview_url(handle, sort="total", page=1):
     )
 
 
-def build_users_url(sort="total", page=1, view="all", cache_refresh=False):
+def build_users_url(
+    sort="total",
+    page=1,
+    view="all",
+    cache_refresh=False,
+    window=None,
+):
     return _build_users_url(
         sort,
         page,
         config().app_prefix,
         view,
         cache_refresh,
+        window,
     )
 
 
-def build_users_data_url(sort="total", page=1, view="all"):
-    return _build_users_data_url(sort, page, config().app_prefix, view)
+def build_users_data_url(sort="total", page=1, view="all", window=None):
+    return _build_users_data_url(
+        sort, page, config().app_prefix, view, window
+    )
 
 
 def resolve_item_search(item_query):

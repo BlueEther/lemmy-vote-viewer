@@ -42,6 +42,7 @@ comments, and review recent voting activity by instance or community.
 - Sort cast histories by date and received histories by date or score
 - Review optional instance-level summaries and recent per-user vote totals
 - Browse an optional cached overview of recent users across all known instances
+- Compare the users overview over one day, two days, one week, or the full configured window
 - Follow links to local profiles, content, vote histories, and remote originals
 - Paginate large result sets with a configurable page size
 - Restrict user histories and item voter lists to public, active communities

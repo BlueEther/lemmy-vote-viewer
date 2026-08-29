@@ -195,6 +195,7 @@ def build_users_url(
     app_prefix="",
     view="all",
     cache_refresh=False,
+    window=None,
 ):
     path = f"{app_prefix}/users/"
     params = {}
@@ -206,10 +207,18 @@ def build_users_url(
         params["page"] = str(page)
     if cache_refresh:
         params["cache_refresh"] = "1"
+    if window is not None:
+        params["window"] = str(window)
     return f"{path}?{urlencode(params)}" if params else path
 
 
-def build_users_data_url(sort="total", page=1, app_prefix="", view="all"):
+def build_users_data_url(
+    sort="total",
+    page=1,
+    app_prefix="",
+    view="all",
+    window=None,
+):
     path = f"{app_prefix}/users/data"
     params = {}
     if view != "all":
@@ -218,6 +227,8 @@ def build_users_data_url(sort="total", page=1, app_prefix="", view="all"):
         params["sort"] = sort
     if page > 1:
         params["page"] = str(page)
+    if window is not None:
+        params["window"] = str(window)
     return f"{path}?{urlencode(params)}" if params else path
 
 def vote_history_path(handle, app_prefix=""):

@@ -16,6 +16,14 @@
   <header>
     <h1>All users</h1>
     <p class="muted">Users with votes recorded locally within the last {{ vote_window_days }} days. Cast totals include all locally recorded votes; received totals include votes on content in public, active communities.</p>
+    <nav class="filters" aria-label="Users time window">
+      <div class="filter-group">
+        <span class="filter-label">Window</span>
+        {% for days, label in window_options %}
+          <a class="filter-button {{ 'active' if window == days else '' }}" href="{{ window_urls[days] }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </nav>
     <p><a class="filter-button" href="{{ users_refresh_url }}">↻ Refresh cached data</a></p>
   </header>
 

@@ -61,6 +61,22 @@ def selected_view():
     return view if view in USERS_OVERVIEW_VIEWS else "all"
 
 
+def selected_window(settings):
+    raw_window = request.args.get("window")
+    try:
+        window = int(raw_window) if raw_window is not None else settings.vote_window_days
+    except (TypeError, ValueError):
+        return settings.vote_window_days
+    allowed = {1, 2, 7, settings.vote_window_days}
+    return window if window in allowed else settings.vote_window_days
+
+
+def window_options(settings):
+    options = [(1, "1 Day"), (2, "2 Days"), (7, "1 Week")]
+    full = (settings.vote_window_days, f"Full {settings.vote_window_days} Days")
+    return [option for option in options if option[0] != full[0]] + [full]
+
+
 def vote_metric(row, view, metric):
     if view == "all":
         return row[f"cast_{metric}"] + row[f"received_{metric}"]
@@ -151,23 +167,32 @@ def users_overview():
     require_users_overview(settings)
     sort = selected_sort()
     view = selected_view()
+    window = selected_window(settings)
     page = parse_page()
     if "cache_refresh" in request.args:
         users_overview_cache().clear()
-        return redirect(build_users_url(sort, page, view))
+        return redirect(build_users_url(sort, page, view, window=window))
+    window_urls = {
+        days: build_users_url(sort, page, view, window=days)
+        for days, _label in window_options(settings)
+    }
     return render_template(
         "users.html",
         sort=sort,
         view=view,
         page=page,
-        vote_window_days=settings.vote_window_days,
-        users_data_url=build_users_data_url(sort, page, view),
+        vote_window_days=window,
+        users_data_url=build_users_data_url(sort, page, view, window),
         users_refresh_url=build_users_url(
             sort,
             page,
             view,
             cache_refresh=True,
+            window=window,
         ),
+        window=window,
+        window_options=window_options(settings),
+        window_urls=window_urls,
     )
 
 
@@ -177,12 +202,13 @@ def users_overview_data():
     require_users_overview(settings)
     sort = selected_sort()
     view = selected_view()
+    window = selected_window(settings)
     requested_page = parse_page()
     cache_key = hashlib.sha256(
         json.dumps(
             (
                 "users-overview-snapshot-v1",
-                settings.vote_window_days,
+                window,
             ),
             separators=(",", ":"),
         ).encode("utf-8")
@@ -199,7 +225,7 @@ def users_overview_data():
             snapshot_rows = json.loads(cached_payload)
         else:
             overview_sql = USERS_OVERVIEW_SQL.format(
-                vote_window_days=settings.vote_window_days,
+                vote_window_days=window,
             )
             with db() as conn:
                 with conn.cursor() as cur:
@@ -211,7 +237,7 @@ def users_overview_data():
                     result_rows = [dict(row) for row in cur.fetchall()]
                     cur.execute(
                         USERS_OVERVIEW_CONTENT_SQL.format(
-                            vote_window_days=settings.vote_window_days,
+                            vote_window_days=window,
                         )
                     )
                     content_by_id = {
@@ -235,7 +261,7 @@ def users_overview_data():
         pagination = make_pagination(total_users, requested_page)
         if pagination["page"] != requested_page:
             return redirect(
-                build_users_data_url(sort, pagination["page"], view)
+                build_users_data_url(sort, pagination["page"], view, window)
             )
 
         sorted_rows = sort_snapshot(snapshot_rows, view, sort)
@@ -243,20 +269,20 @@ def users_overview_data():
         page_rows = sorted_rows[offset : offset + settings.page_size]
         rows = [enrich_user(row, settings) for row in page_rows]
         sort_urls = {
-            key: build_users_url(key, view=view)
+            key: build_users_url(key, view=view, window=window)
             for key in USERS_OVERVIEW_SORTS
         }
         view_urls = {
-            key: build_users_url(sort, view=key)
+            key: build_users_url(sort, view=key, window=window)
             for key in USERS_OVERVIEW_VIEWS
         }
         if pagination["has_prev"]:
             pagination["prev_url"] = build_users_url(
-                sort, pagination["prev_page"], view
+                sort, pagination["prev_page"], view, window=window
             )
         if pagination["has_next"]:
             pagination["next_url"] = build_users_url(
-                sort, pagination["next_page"], view
+                sort, pagination["next_page"], view, window=window
             )
         payload = render_template(
             "_users_overview.html",
@@ -266,7 +292,9 @@ def users_overview_data():
             sort_urls=sort_urls,
             view_urls=view_urls,
             pagination=pagination,
-            vote_window_days=settings.vote_window_days,
+            vote_window_days=window,
+            window=window,
+            window_options=window_options(settings),
         )
         return users_response(
             payload,
