@@ -1309,6 +1309,159 @@ USERS_OVERVIEW_SORTS = (
 )
 USERS_OVERVIEW_VIEWS = ("all", "cast", "received")
 
+LOCAL_USERS_OVERVIEW_SQL = """
+WITH local_users AS MATERIALIZED (
+    SELECT
+        lu.id AS local_user_id,
+        pe.id,
+        pe.name,
+        pe.display_name,
+        pe.local,
+        pe.actor_id,
+        i.domain AS instance_domain
+    FROM local_user lu
+    JOIN person pe ON pe.id = lu.person_id
+    JOIN instance i ON i.id = pe.instance_id
+    WHERE pe.local = true
+      AND pe.deleted = false
+),
+last_logins AS MATERIALIZED (
+    SELECT
+        lt.user_id AS local_user_id,
+        MAX(lt.published) AS last_login
+    FROM login_token lt
+    JOIN local_users lu ON lu.local_user_id = lt.user_id
+    GROUP BY lt.user_id
+),
+post_counts AS MATERIALIZED (
+    SELECT
+        pa.creator_id AS person_id,
+        COUNT(*)::bigint AS post_count,
+        COALESCE(SUM(pa.upvotes), 0)::bigint AS post_up,
+        COALESCE(SUM(pa.downvotes), 0)::bigint AS post_down
+    FROM post_aggregates pa
+    JOIN local_users lu ON lu.id = pa.creator_id
+    GROUP BY pa.creator_id
+),
+comment_counts AS MATERIALIZED (
+    SELECT
+        cm.creator_id AS person_id,
+        COUNT(*)::bigint AS comment_count,
+        COALESCE(SUM(ca.upvotes), 0)::bigint AS comment_up,
+        COALESCE(SUM(ca.downvotes), 0)::bigint AS comment_down
+    FROM comment_aggregates ca
+    JOIN comment cm ON cm.id = ca.comment_id
+    JOIN local_users lu ON lu.id = cm.creator_id
+    GROUP BY cm.creator_id
+),
+cast_posts AS MATERIALIZED (
+    SELECT
+        pl.person_id,
+        COUNT(*)::bigint AS cast_posts,
+        COUNT(*) FILTER (WHERE pl.score > 0)::bigint AS cast_post_up,
+        COUNT(*) FILTER (WHERE pl.score < 0)::bigint AS cast_post_down,
+        COUNT(*) FILTER (WHERE pl.score = 0)::bigint AS cast_post_neutral
+    FROM post_like pl
+    JOIN local_users lu ON lu.id = pl.person_id
+    GROUP BY pl.person_id
+),
+cast_comments AS MATERIALIZED (
+    SELECT
+        cl.person_id,
+        COUNT(*)::bigint AS cast_comments,
+        COUNT(*) FILTER (WHERE cl.score > 0)::bigint AS cast_comment_up,
+        COUNT(*) FILTER (WHERE cl.score < 0)::bigint AS cast_comment_down,
+        COUNT(*) FILTER (WHERE cl.score = 0)::bigint AS cast_comment_neutral
+    FROM comment_like cl
+    JOIN local_users lu ON lu.id = cl.person_id
+    GROUP BY cl.person_id
+),
+user_totals AS MATERIALIZED (
+    SELECT
+        lu.id,
+        lu.name,
+        lu.display_name,
+        lu.local,
+        lu.actor_id,
+        lu.instance_domain,
+        ll.last_login,
+        COALESCE(pc.post_count, 0)::bigint AS post_count,
+        COALESCE(pc.post_up, 0)::bigint AS post_up,
+        COALESCE(pc.post_down, 0)::bigint AS post_down,
+        COALESCE(cc.comment_count, 0)::bigint AS comment_count,
+        COALESCE(cc.comment_up, 0)::bigint AS comment_up,
+        COALESCE(cc.comment_down, 0)::bigint AS comment_down,
+        COALESCE(cp.cast_posts, 0)::bigint AS cast_posts,
+        COALESCE(ccast.cast_comments, 0)::bigint AS cast_comments,
+        COALESCE(cp.cast_post_up, 0)::bigint
+          + COALESCE(ccast.cast_comment_up, 0)::bigint AS cast_up,
+        COALESCE(cp.cast_post_down, 0)::bigint
+          + COALESCE(ccast.cast_comment_down, 0)::bigint AS cast_down,
+        COALESCE(cp.cast_post_neutral, 0)::bigint
+          + COALESCE(ccast.cast_comment_neutral, 0)::bigint AS cast_neutral
+    FROM local_users lu
+    LEFT JOIN last_logins ll ON ll.local_user_id = lu.local_user_id
+    LEFT JOIN post_counts pc ON pc.person_id = lu.id
+    LEFT JOIN comment_counts cc ON cc.person_id = lu.id
+    LEFT JOIN cast_posts cp ON cp.person_id = lu.id
+    LEFT JOIN cast_comments ccast ON ccast.person_id = lu.id
+),
+summary AS (
+    SELECT COUNT(*)::bigint AS total_users
+    FROM local_users
+),
+paged_users AS MATERIALIZED (
+    SELECT
+        ut.*,
+        ROW_NUMBER() OVER (ORDER BY {order_by}) AS sort_position
+    FROM user_totals ut
+)
+SELECT
+    s.total_users,
+    pu.id,
+    pu.name,
+    pu.display_name,
+    pu.local,
+    pu.actor_id,
+    pu.instance_domain,
+    pu.last_login,
+    pu.post_count,
+    pu.post_up,
+    pu.post_down,
+    pu.comment_count,
+    pu.comment_up,
+    pu.comment_down,
+    pu.cast_posts,
+    pu.cast_comments,
+    (pu.cast_posts + pu.cast_comments)::bigint AS cast_total,
+    pu.cast_up,
+    pu.cast_down,
+    pu.cast_neutral,
+    (pu.post_up + pu.comment_up)::bigint AS received_up,
+    (pu.post_down + pu.comment_down)::bigint AS received_down,
+    (pu.post_up + pu.post_down + pu.comment_up + pu.comment_down)::bigint
+      AS received_total
+FROM summary s
+LEFT JOIN paged_users pu
+  ON pu.sort_position > %s
+ AND pu.sort_position <= %s
+ORDER BY pu.sort_position
+"""
+
+LOCAL_USERS_OVERVIEW_SORTS = {
+    "username": "lower(ut.name), ut.id",
+    "last_login": "ut.last_login DESC NULLS LAST, lower(ut.name), ut.id",
+    "posts": "ut.post_count DESC, lower(ut.name), ut.id",
+    "comments": "ut.comment_count DESC, lower(ut.name), ut.id",
+    "cast": (
+        "(ut.cast_posts + ut.cast_comments) DESC, lower(ut.name), ut.id"
+    ),
+    "received": (
+        "(ut.post_up + ut.post_down + ut.comment_up + ut.comment_down) DESC, "
+        "lower(ut.name), ut.id"
+    ),
+}
+
 INSTANCE_SORTS = {
     "total": "vt.total DESC, lower(pe.name), pe.id",
     "down": "vt.down DESC, vt.total DESC, lower(pe.name), pe.id",

@@ -192,6 +192,14 @@ class VoteViewerTests(unittest.TestCase):
             links.build_users_data_url("total", 1, "/votes", "all", 7),
             "/votes/users/data?window=7",
         )
+        self.assertEqual(
+            links.build_local_users_url("received", 3, "/votes"),
+            "/votes/users/local?sort=received&page=3",
+        )
+        self.assertEqual(
+            links.build_local_users_data_url("username", 1, "/votes"),
+            "/votes/users/local/data",
+        )
 
     def request_index(self, path, results, community=None):
         database = ScriptedDatabase(results)
@@ -891,6 +899,172 @@ class VoteViewerTests(unittest.TestCase):
                         vote_window_days=30,
                     ),
                     None,
+                ),
+            ],
+        )
+
+    def test_local_users_overview_enforces_instance_access_before_database(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(users_routes, "db") as database,
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=False),
+                "/users/local/data",
+            )
+
+        self.assertEqual(response.status_code, 403)
+        database.assert_not_called()
+
+    def test_local_users_overview_can_be_open_in_unrestricted_local_env(self):
+        enabled = replace(
+            viewer.CONFIG,
+            enable_users_overview=True,
+            auth_instance_require="none",
+        )
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": enabled},
+        ):
+            response = self.client.get("/users/local")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Local users", response.data)
+        self.assertIn(
+            b'data-users-overview-url="/users/local/data"', response.data
+        )
+
+    def test_local_users_overview_page_loads_data_asynchronously(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": enabled},
+        ):
+            response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/local?sort=received&page=2",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Local users", response.data)
+        self.assertIn(
+            b'data-users-overview-url="/users/local/data?sort=received&amp;page=2"',
+            response.data,
+        )
+        self.assertIn(
+            b'href="/users/local?sort=received&amp;page=2&amp;cache_refresh=1"',
+            response.data,
+        )
+
+    def test_local_users_overview_link_follows_instance_access(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": enabled},
+        ):
+            admin_response = self.request_as(lemmy_user_payload(admin=True))
+            AUTH_MANAGER.cache.clear()
+            user_response = self.request_as(lemmy_user_payload(admin=False))
+
+        self.assertIn(b"Browse all recent users", admin_response.data)
+        self.assertIn(b"Browse local instance users", admin_response.data)
+        self.assertNotIn(b"Browse all recent users", user_response.data)
+        self.assertNotIn(b"Browse local instance users", user_response.data)
+
+        unrestricted = replace(
+            viewer.CONFIG,
+            enable_users_overview=True,
+            auth_instance_require="none",
+        )
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": unrestricted},
+        ):
+            public_response = self.client.get("/")
+
+        self.assertIn(b"Browse all recent users", public_response.data)
+        self.assertIn(b"Browse local instance users", public_response.data)
+
+    def test_local_users_overview_data_uses_timeout_pagination_and_cache(self):
+        enabled = replace(viewer.CONFIG, enable_users_overview=True)
+        row = {
+            "total_users": 250,
+            "id": 42,
+            "name": "Dave",
+            "display_name": "Dave",
+            "local": True,
+            "actor_id": "https://lemmy.example/u/Dave",
+            "instance_domain": "lemmy.example",
+            "last_login": "2026-09-05 12:34:56+00",
+            "post_count": 7,
+            "post_up": 14,
+            "post_down": 2,
+            "comment_count": 19,
+            "comment_up": 12,
+            "comment_down": 2,
+            "cast_posts": 4,
+            "cast_comments": 6,
+            "cast_total": 10,
+            "cast_up": 9,
+            "cast_down": 1,
+            "cast_neutral": 0,
+            "received_up": 26,
+            "received_down": 4,
+            "received_total": 30,
+        }
+        database = ScriptedDatabase([None, [row]])
+
+        with (
+            patch.dict(
+                viewer.app.config,
+                {"VOTE_VIEWER_CONFIG": enabled},
+            ),
+            patch.object(users_routes, "db", return_value=database),
+        ):
+            first_response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/local/data?sort=received&page=2",
+            )
+            second_response = self.request_as(
+                lemmy_user_payload(admin=True),
+                "/users/local/data?sort=received&page=2",
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(
+            first_response.headers["X-Users-Overview-Cache"], "miss"
+        )
+        self.assertEqual(
+            second_response.headers["X-Users-Overview-Cache"], "hit"
+        )
+        self.assertIn(b"@Dave@lemmy.example", first_response.data)
+        self.assertIn(b"2026-09-05 12:34:56+00", first_response.data)
+        self.assertIn(b"Post votes", first_response.data)
+        self.assertIn(b"Comment votes", first_response.data)
+        self.assertIn(b"Votes cast", first_response.data)
+        self.assertIn(b"Votes received", first_response.data)
+        self.assertIn(
+            b'href="/users/local?sort=posts"', first_response.data
+        )
+        self.assertIn(b"Page 2 of 3", first_response.data)
+        self.assertEqual(
+            database.queries,
+            [
+                (
+                    "SELECT set_config('statement_timeout', %s, true)",
+                    ("12s",),
+                ),
+                (
+                    queries.LOCAL_USERS_OVERVIEW_SQL.format(
+                        order_by=queries.LOCAL_USERS_OVERVIEW_SORTS[
+                            "received"
+                        ],
+                    ),
+                    (viewer.CONFIG.page_size, viewer.CONFIG.page_size * 2),
                 ),
             ],
         )

@@ -1,0 +1,80 @@
+<section class="users-overview" aria-busy="false">
+  <nav class="filters" aria-label="Sort local users">
+    <div class="filter-group">
+      <span class="filter-label">Sort</span>
+      <a class="filter-button {{ 'active' if sort == 'username' else '' }}" href="{{ sort_urls.username }}">Username</a>
+      <a class="filter-button {{ 'active' if sort == 'last_login' else '' }}" href="{{ sort_urls.last_login }}">Last login</a>
+      <a class="filter-button {{ 'active' if sort == 'posts' else '' }}" href="{{ sort_urls.posts }}">Posts</a>
+      <a class="filter-button {{ 'active' if sort == 'comments' else '' }}" href="{{ sort_urls.comments }}">Comments</a>
+      <a class="filter-button {{ 'active' if sort == 'cast' else '' }}" href="{{ sort_urls.cast }}">Votes cast</a>
+      <a class="filter-button {{ 'active' if sort == 'received' else '' }}" href="{{ sort_urls.received }}">Votes received</a>
+    </div>
+  </nav>
+
+  {% if rows %}
+    <div class="instance-table-wrap">
+      <table class="instance-table local-users-table">
+        <thead>
+          <tr>
+            <th scope="col">User</th>
+            <th scope="col">Last login</th>
+            <th scope="col">Posts</th>
+            <th scope="col">Post votes</th>
+            <th scope="col">Comments</th>
+            <th scope="col">Comment votes</th>
+            <th scope="col">Votes cast</th>
+            <th scope="col">Votes received</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <th scope="row" class="instance-user">
+                <a href="{{ row.vote_path }}">{{ row.display_name or row.name }}</a>
+                <a class="profile-link" title="Open local Lemmy profile" href="{{ row.profile_path }}">👤</a>
+                <span class="muted">@{{ row.handle }}</span>
+              </th>
+              <td>{{ row.last_login or "Never" }}</td>
+              <td class="numeric">{{ row.post_count }}</td>
+              <td>
+                <b class="up">{{ row.post_up }} ↑</b>
+                <b class="down">{{ row.post_down }} ↓</b>
+              </td>
+              <td class="numeric">{{ row.comment_count }}</td>
+              <td>
+                <b class="up">{{ row.comment_up }} ↑</b>
+                <b class="down">{{ row.comment_down }} ↓</b>
+              </td>
+              <td>
+                <b>{{ row.cast_total }}</b>
+                <span class="muted">posts {{ row.cast_posts }} · comments {{ row.cast_comments }}</span>
+                <span class="local-users-vote-breakdown">
+                  <b class="up">{{ row.cast_up }} ↑</b>
+                  <b class="down">{{ row.cast_down }} ↓</b>
+                  {% if row.cast_neutral %}<b class="neutral">{{ row.cast_neutral }} •</b>{% endif %}
+                </span>
+              </td>
+              <td>
+                <b>{{ row.received_total }}</b>
+                <span class="local-users-vote-breakdown">
+                  <b class="up">{{ row.received_up }} ↑</b>
+                  <b class="down">{{ row.received_down }} ↓</b>
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pagination.page_count > 1 %}
+      <nav class="pagination" aria-label="Pagination">
+        {% if pagination.has_prev %}<a class="filter-button" href="{{ pagination.prev_url }}">← Previous</a>{% else %}<span></span>{% endif %}
+        <span class="muted">Page {{ pagination.page }} of {{ pagination.page_count }} · {{ pagination.total }} local users</span>
+        {% if pagination.has_next %}<a class="filter-button" href="{{ pagination.next_url }}">Next →</a>{% else %}<span></span>{% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <p class="notice">No local users found.</p>
+  {% endif %}
+</section>
