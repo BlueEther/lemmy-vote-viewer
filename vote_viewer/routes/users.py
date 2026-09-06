@@ -173,7 +173,7 @@ def require_users_overview(settings):
 def require_local_users_overview(settings):
     if not settings.enable_users_overview:
         abort(404)
-    enforce_access("admin")
+    enforce_access(settings.auth_instance_require)
 
 
 @blueprint.route("/users/")

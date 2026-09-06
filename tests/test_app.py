@@ -903,7 +903,7 @@ class VoteViewerTests(unittest.TestCase):
             ],
         )
 
-    def test_local_users_overview_requires_admin_before_database_access(self):
+    def test_local_users_overview_enforces_instance_access_before_database(self):
         enabled = replace(viewer.CONFIG, enable_users_overview=True)
         with (
             patch.dict(
@@ -919,6 +919,24 @@ class VoteViewerTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
         database.assert_not_called()
+
+    def test_local_users_overview_can_be_open_in_unrestricted_local_env(self):
+        enabled = replace(
+            viewer.CONFIG,
+            enable_users_overview=True,
+            auth_instance_require="none",
+        )
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": enabled},
+        ):
+            response = self.client.get("/users/local")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Local users", response.data)
+        self.assertIn(
+            b'data-users-overview-url="/users/local/data"', response.data
+        )
 
     def test_local_users_overview_page_loads_data_asynchronously(self):
         enabled = replace(viewer.CONFIG, enable_users_overview=True)
@@ -942,7 +960,7 @@ class VoteViewerTests(unittest.TestCase):
             response.data,
         )
 
-    def test_local_users_overview_link_is_admin_only(self):
+    def test_local_users_overview_link_follows_instance_access(self):
         enabled = replace(viewer.CONFIG, enable_users_overview=True)
         with patch.dict(
             viewer.app.config,
@@ -956,6 +974,20 @@ class VoteViewerTests(unittest.TestCase):
         self.assertIn(b"Browse local instance users", admin_response.data)
         self.assertNotIn(b"Browse all recent users", user_response.data)
         self.assertNotIn(b"Browse local instance users", user_response.data)
+
+        unrestricted = replace(
+            viewer.CONFIG,
+            enable_users_overview=True,
+            auth_instance_require="none",
+        )
+        with patch.dict(
+            viewer.app.config,
+            {"VOTE_VIEWER_CONFIG": unrestricted},
+        ):
+            public_response = self.client.get("/")
+
+        self.assertIn(b"Browse all recent users", public_response.data)
+        self.assertIn(b"Browse local instance users", public_response.data)
 
     def test_local_users_overview_data_uses_timeout_pagination_and_cache(self):
         enabled = replace(viewer.CONFIG, enable_users_overview=True)

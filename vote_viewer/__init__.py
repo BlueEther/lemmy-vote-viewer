@@ -123,7 +123,9 @@ def inject_app_config():
         ),
         "local_users_overview_enabled": (
             settings.enable_users_overview
-            and auth_manager.access_requirement_met(auth_user, "admin")
+            and auth_manager.access_requirement_met(
+                auth_user, settings.auth_instance_require
+            )
         ),
         "federation_haiku": FEDERATION_HAIKU,
     }
