@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- Copyright (C) 2026 BlueEther@no.lastname.nz -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Local users · Lemmy Vote Viewer</title>
+  <link rel="stylesheet" href="{{ app_prefix }}/static/style.css">
+  <script src="{{ app_prefix }}/static/users.js" defer></script>
+</head>
+<body>
+<main class="wrap users-wrap">
+  <p><a href="{{ app_prefix }}/">← Vote Viewer</a></p>
+
+  <header>
+    <h1>Local users</h1>
+    <p class="muted">Admin-only overview of local instance users. Vote totals use the current locally recorded vote state; received totals use Lemmy aggregate counts.</p>
+    <p>User data is cached for 30 minutes: <a class="filter-button" href="{{ users_refresh_url }}">↻ Refresh cached data</a></p>
+  </header>
+
+  <section class="users-overview-loading" data-users-overview-url="{{ users_data_url }}" aria-busy="true" aria-live="polite">
+    <p class="notice" data-users-status>Loading the local users overview…</p>
+    <noscript><p class="notice">JavaScript is required to load this overview.</p></noscript>
+  </section>
+
+  {% include "_footer.html" %}
+</main>
+</body>
+</html>

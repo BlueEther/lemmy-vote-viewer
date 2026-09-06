@@ -558,6 +558,21 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 
+.local-users-table {
+  min-width: 1280px;
+}
+
+.local-users-table td {
+  vertical-align: top;
+}
+
+.local-users-vote-breakdown {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
 .instance-user {
   min-width: 210px;
 }

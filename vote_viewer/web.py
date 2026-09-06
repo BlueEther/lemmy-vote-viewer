@@ -11,6 +11,8 @@ from .links import (
     build_index_url as _build_index_url,
     build_instance_url as _build_instance_url,
     build_item_url as _build_item_url,
+    build_local_users_data_url as _build_local_users_data_url,
+    build_local_users_url as _build_local_users_url,
     build_users_data_url as _build_users_data_url,
     build_users_url as _build_users_url,
     make_pagination as _make_pagination,
@@ -130,6 +132,16 @@ def build_users_data_url(sort="total", page=1, view="all", window=None):
     return _build_users_data_url(
         sort, page, config().app_prefix, view, window
     )
+
+
+def build_local_users_url(sort="username", page=1, cache_refresh=False):
+    return _build_local_users_url(
+        sort, page, config().app_prefix, cache_refresh
+    )
+
+
+def build_local_users_data_url(sort="username", page=1):
+    return _build_local_users_data_url(sort, page, config().app_prefix)
 
 
 def resolve_item_search(item_query):

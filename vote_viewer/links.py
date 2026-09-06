@@ -231,6 +231,28 @@ def build_users_data_url(
         params["window"] = str(window)
     return f"{path}?{urlencode(params)}" if params else path
 
+
+def build_local_users_url(sort="username", page=1, app_prefix="", cache_refresh=False):
+    path = f"{app_prefix}/users/local"
+    params = {}
+    if sort != "username":
+        params["sort"] = sort
+    if page > 1:
+        params["page"] = str(page)
+    if cache_refresh:
+        params["cache_refresh"] = "1"
+    return f"{path}?{urlencode(params)}" if params else path
+
+
+def build_local_users_data_url(sort="username", page=1, app_prefix=""):
+    path = f"{app_prefix}/users/local/data"
+    params = {}
+    if sort != "username":
+        params["sort"] = sort
+    if page > 1:
+        params["page"] = str(page)
+    return f"{path}?{urlencode(params)}" if params else path
+
 def vote_history_path(handle, app_prefix=""):
     return (
         build_index_url(handle, "all", None, 1, app_prefix=app_prefix)

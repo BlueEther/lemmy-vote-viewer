@@ -24,6 +24,9 @@
         {% if users_overview_enabled %}
           <p><a href="{{ app_prefix }}/users/">Browse all recent users →</a></p>
         {% endif %}
+        {% if local_users_overview_enabled %}
+          <p><a href="{{ app_prefix }}/users/local">Browse local instance users →</a></p>
+        {% endif %}
       </section>
 
       <section class="search-panel">

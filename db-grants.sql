@@ -69,6 +69,8 @@ GRANT USAGE ON SCHEMA public TO vote_viewer;
 REVOKE ALL PRIVILEGES ON TABLE
     public.instance,
     public.person,
+    public.local_user,
+    public.login_token,
     public.post,
     public.comment,
     public.community,
@@ -90,6 +92,8 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'instance',
         'person',
+        'local_user',
+        'login_token',
         'post',
         'comment',
         'community',
@@ -175,6 +179,28 @@ GRANT SELECT (
     deleted
 )
 ON public.person
+TO vote_viewer;
+
+
+\echo ''
+\echo 'Granting SELECT access to required columns on [local_user]...'
+
+GRANT SELECT (
+    id,
+    person_id
+)
+ON public.local_user
+TO vote_viewer;
+
+
+\echo ''
+\echo 'Granting SELECT access to required columns on [login_token]...'
+
+GRANT SELECT (
+    user_id,
+    published
+)
+ON public.login_token
 TO vote_viewer;
 
 

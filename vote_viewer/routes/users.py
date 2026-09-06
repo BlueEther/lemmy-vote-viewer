@@ -23,12 +23,16 @@ from ..links import (
     remote_profile_url,
 )
 from ..queries import (
+    LOCAL_USERS_OVERVIEW_SORTS,
+    LOCAL_USERS_OVERVIEW_SQL,
     USERS_OVERVIEW_CONTENT_SQL,
     USERS_OVERVIEW_SORTS,
     USERS_OVERVIEW_SQL,
     USERS_OVERVIEW_VIEWS,
 )
 from ..web import (
+    build_local_users_data_url,
+    build_local_users_url,
     build_users_data_url,
     build_users_url,
     config,
@@ -49,6 +53,11 @@ def users_response(payload, status=200, cache_status=None):
     if cache_status:
         response.headers["X-Users-Overview-Cache"] = cache_status
     return response
+
+
+def selected_local_sort():
+    sort = request.args.get("sort", "username")
+    return sort if sort in LOCAL_USERS_OVERVIEW_SORTS else "username"
 
 
 def selected_sort():
@@ -161,6 +170,12 @@ def require_users_overview(settings):
     enforce_access(settings.auth_instance_require)
 
 
+def require_local_users_overview(settings):
+    if not settings.enable_users_overview:
+        abort(404)
+    enforce_access("admin")
+
+
 @blueprint.route("/users/")
 def users_overview():
     settings = config()
@@ -194,6 +209,134 @@ def users_overview():
         window_options=window_options(settings),
         window_urls=window_urls,
     )
+
+
+@blueprint.route("/users/local")
+def local_users_overview():
+    settings = config()
+    require_local_users_overview(settings)
+    sort = selected_local_sort()
+    page = parse_page()
+    if "cache_refresh" in request.args:
+        users_overview_cache().clear()
+        return redirect(build_local_users_url(sort, page))
+    return render_template(
+        "local_users.html",
+        sort=sort,
+        page=page,
+        users_data_url=build_local_users_data_url(sort, page),
+        users_refresh_url=build_local_users_url(
+            sort,
+            page,
+            cache_refresh=True,
+        ),
+    )
+
+
+@blueprint.route("/users/local/data")
+def local_users_overview_data():
+    settings = config()
+    require_local_users_overview(settings)
+    sort = selected_local_sort()
+    requested_page = parse_page()
+    cache_key = hashlib.sha256(
+        json.dumps(
+            ("local-users-overview-v1", sort, requested_page),
+            separators=(",", ":"),
+        )
+        .encode("utf-8")
+    ).hexdigest()
+    cache = users_overview_cache()
+    cache_state, cached_payload = cache.claim(cache_key)
+    if cache_state == "busy":
+        response = users_response("", status=202, cache_status="busy")
+        response.headers["Retry-After"] = "1"
+        return response
+
+    try:
+        if cache_state == "hit":
+            snapshot_rows = json.loads(cached_payload)
+        else:
+            requested_offset = (requested_page - 1) * settings.page_size
+            overview_sql = LOCAL_USERS_OVERVIEW_SQL.format(
+                order_by=LOCAL_USERS_OVERVIEW_SORTS[sort],
+            )
+            with db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT set_config('statement_timeout', %s, true)",
+                        (f"{settings.instance_query_timeout_seconds}s",),
+                    )
+                    cur.execute(
+                        overview_sql,
+                        (
+                            requested_offset,
+                            requested_offset + settings.page_size,
+                        ),
+                    )
+                    snapshot_rows = [dict(row) for row in cur.fetchall()]
+            for row in snapshot_rows:
+                if row.get("last_login") is not None:
+                    row["last_login"] = str(row["last_login"])
+            cache.store(
+                cache_key,
+                json.dumps(snapshot_rows, separators=(",", ":")),
+            )
+
+        total_users = (
+            snapshot_rows[0]["total_users"] if snapshot_rows else 0
+        )
+        pagination = make_pagination(total_users, requested_page)
+        if pagination["page"] != requested_page:
+            return redirect(build_local_users_data_url(sort, pagination["page"]))
+
+        rows = [
+            enrich_user(row, settings)
+            for row in snapshot_rows
+            if row["id"] is not None
+        ]
+        sort_urls = {
+            key: build_local_users_url(key)
+            for key in LOCAL_USERS_OVERVIEW_SORTS
+        }
+        if pagination["has_prev"]:
+            pagination["prev_url"] = build_local_users_url(
+                sort,
+                pagination["prev_page"],
+            )
+        if pagination["has_next"]:
+            pagination["next_url"] = build_local_users_url(
+                sort,
+                pagination["next_page"],
+            )
+        payload = render_template(
+            "_local_users_overview.html",
+            rows=rows,
+            sort=sort,
+            sort_urls=sort_urls,
+            pagination=pagination,
+        )
+        return users_response(
+            payload,
+            cache_status="miss" if cache_state == "claimed" else "hit",
+        )
+    except psycopg.errors.QueryCanceled:
+        cache.release(cache_key)
+        current_app.logger.warning("Local users overview query timed out")
+        return users_response(
+            render_template(
+                "_users_overview_error.html",
+                message=(
+                    "The local users overview took too long to calculate. "
+                    "Try again later."
+                ),
+            ),
+            status=503,
+            cache_status="error",
+        )
+    except Exception:
+        cache.release(cache_key)
+        raise
 
 
 @blueprint.route("/users/data")

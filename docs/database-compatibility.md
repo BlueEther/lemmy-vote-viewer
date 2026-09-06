@@ -68,6 +68,8 @@ viewer is permitted to read. The application currently requires:
 | --- | --- |
 | `instance` | `id`, `domain` |
 | `person` | `id`, `name`, `display_name`, `local`, `actor_id`, `instance_id`, `deleted` |
+| `local_user` | `id`, `person_id` |
+| `login_token` | `user_id`, `published` |
 | `post` | `id`, `name`, `creator_id`, `community_id`, `ap_id`, `local`, `deleted`, `removed` |
 | `comment` | `id`, `creator_id`, `post_id`, `content`, `ap_id`, `local`, `deleted`, `removed` |
 | `community` | `id`, `name`, `title`, `local`, `actor_id`, `instance_id`, `visibility`, `deleted`, `removed` |
@@ -111,6 +113,10 @@ WITH required(table_name, column_name) AS (
         ('person', 'actor_id'),
         ('person', 'instance_id'),
         ('person', 'deleted'),
+        ('local_user', 'id'),
+        ('local_user', 'person_id'),
+        ('login_token', 'user_id'),
+        ('login_token', 'published'),
         ('post', 'id'),
         ('post', 'name'),
         ('post', 'creator_id'),
